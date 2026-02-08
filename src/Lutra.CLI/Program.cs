@@ -4,6 +4,7 @@ using Lutra.CLI.Commands.Cleanup;
 using Lutra.CLI.Commands.Config;
 using Lutra.CLI.Commands.History;
 using Lutra.CLI.Commands.Schedule;
+using System.Reflection;
 using Spectre.Console.Cli;
 
 var app = new CommandApp();
@@ -11,6 +12,9 @@ var app = new CommandApp();
 app.Configure(config =>
 {
     config.SetApplicationName("lutra");
+    config.SetApplicationVersion(
+        Assembly.GetExecutingAssembly()
+            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "unknown");
 
     config.AddBranch<GlobalSettings>("backup", backup =>
     {
