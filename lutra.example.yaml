@@ -1,0 +1,68 @@
+# Lutra Configuration Example
+# Copy this to /etc/lutra/lutra.yaml and customize for your environment
+
+# Base directory where all backup files will be stored
+backup_directory: /var/backups/lutra
+
+# Global retention policy (can be overridden per database)
+retention:
+  max_count: 10        # Keep at most 10 backups per target
+  max_age_days: 30     # Delete backups older than 30 days (when max_count also exceeded)
+
+# Database targets to back up
+databases:
+  # PostgreSQL Example
+  - name: my-postgres
+    type: postgresql
+    container: postgres-container    # Docker container name or ID
+    database: mydb                   # Database name inside the container
+    username: postgres               # Database user
+    password_env: POSTGRES_PASSWORD  # Environment variable name (from .env file)
+    schedule: "0 3 * * *"           # Cron: Daily at 3:00 AM
+    format: custom                   # custom (.dump) or plain (.sql)
+    compression: gzip                # gzip or none
+
+  # MongoDB Example
+  - name: my-mongo
+    type: mongodb
+    container: mongo-container
+    database: mydb
+    schedule: "0 4 * * 0"           # Cron: Weekly on Sundays at 4:00 AM
+    compression: gzip
+    # Note: MongoDB doesn't require username/password if auth is disabled
+    # If auth is enabled, add username and password_env
+
+  # SQL Server Example
+  - name: my-sqlserver
+    type: sqlserver
+    container: sqlserver-container
+    database: MyDatabase
+    username: sa
+    password_env: SQLSERVER_PASSWORD
+    schedule: "0 2 * * *"           # Cron: Daily at 2:00 AM
+    compression: gzip
+
+  # Example with custom retention (overrides global settings)
+  - name: critical-db
+    type: postgresql
+    container: critical-postgres
+    database: critical_production
+    username: postgres
+    password_env: CRITICAL_DB_PASSWORD
+    schedule: "0 */6 * * *"         # Cron: Every 6 hours
+    format: custom
+    compression: gzip
+    retention:
+      max_count: 20      # Keep more backups for critical databases
+      max_age_days: 90   # Retain for 90 days
+
+# Schedule Syntax (systemd OnCalendar format, or standard cron format)
+#
+# Cron format examples:
+# "0 3 * * *"       - Daily at 3:00 AM
+# "0 */6 * * *"     - Every 6 hours
+# "0 2 * * 0"       - Weekly on Sundays at 2:00 AM
+# "0 1 1 * *"       - Monthly on the 1st at 1:00 AM
+# "*/15 * * * *"    - Every 15 minutes
+#
+# See: https://crontab.guru/ for cron syntax help

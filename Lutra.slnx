@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="src/Lutra.CLI/Lutra.CLI.csproj" />
+  <Project Path="src/Lutra.Core/Lutra.Core.csproj" />
+</Solution>

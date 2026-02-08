@@ -1,0 +1,53 @@
+# Build outputs
+bin/
+obj/
+dist/
+*.dll
+*.exe
+*.pdb
+
+# User-specific files
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.sln.DotSettings.user
+
+# Build results
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+[Aa]rm/
+[Aa]rm64/
+bld/
+[Bb]in/
+[Oo]bj/
+
+# .NET
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+# Rider
+.idea/
+*.sln.iml
+
+# Visual Studio Code
+.vscode/
+*.code-workspace
+
+# Environment files (IMPORTANT: never commit passwords!)
+.env
+*.env
+!.env.example
+
+# Backup files
+*.bak
+*.dump
+*.gz
+backup-history.json
+
+# OS files
+.DS_Store
+Thumbs.db
