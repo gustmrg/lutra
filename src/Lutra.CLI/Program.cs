@@ -16,7 +16,7 @@ app.Configure(config =>
         Assembly.GetExecutingAssembly()
             .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "unknown");
 
-    config.AddBranch<GlobalSettings>("backup", backup =>
+    config.AddBranch<CommandSettings>("backup", backup =>
     {
         backup.SetDescription("Run and manage database backups.");
 
@@ -33,7 +33,7 @@ app.Configure(config =>
     config.AddCommand<CleanupCommand>("cleanup")
         .WithDescription("Run retention cleanup to remove old backups.");
 
-    config.AddBranch<GlobalSettings>("config", cfg =>
+    config.AddBranch<CommandSettings>("config", cfg =>
     {
         cfg.SetDescription("Configuration management.");
 
@@ -44,7 +44,7 @@ app.Configure(config =>
             .WithDescription("Validate the configuration file.");
     });
 
-    config.AddBranch<GlobalSettings>("schedule", schedule =>
+    config.AddBranch<CommandSettings>("schedule", schedule =>
     {
         schedule.SetDescription("Manage systemd timers for scheduled backups.");
 
