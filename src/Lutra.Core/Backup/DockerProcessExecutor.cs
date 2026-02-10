@@ -37,18 +37,23 @@ public class DockerProcessExecutor : IProcessExecutor
 
         // Stream stdout to a temp file to avoid holding large backups in memory
         var tempFile = Path.GetTempFileName();
+        string stderr;
+        int exitCode;
+
+        // Write phase - must complete and dispose before reading
         await using (var tempStream = new FileStream(tempFile, FileMode.Create, FileAccess.Write, FileShare.None, 81920, useAsync: true))
         {
             var stderrTask = process.StandardError.ReadToEndAsync(cancellationToken);
             await process.StandardOutput.BaseStream.CopyToAsync(tempStream, cancellationToken);
             await process.WaitForExitAsync(cancellationToken);
 
-            var stderr = await stderrTask;
-
-            // Reopen as a readable stream with auto-delete on close
-            var outputStream = new FileStream(tempFile, FileMode.Open, FileAccess.Read, FileShare.Read, 81920, FileOptions.DeleteOnClose | FileOptions.Asynchronous);
-
-            return new ProcessResult(process.ExitCode, outputStream, stderr);
+            stderr = await stderrTask;
+            exitCode = process.ExitCode;
         }
+
+        // Read phase - write stream is now disposed, safe to open for reading
+        var outputStream = new FileStream(tempFile, FileMode.Open, FileAccess.Read, FileShare.Read, 81920, FileOptions.DeleteOnClose | FileOptions.Asynchronous);
+
+        return new ProcessResult(exitCode, outputStream, stderr);
     }
 }
