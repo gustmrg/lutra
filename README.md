@@ -18,7 +18,21 @@ It uses `docker exec` to run native dump tools (`pg_dump`, `mongodump`, `sqlcmd`
 
 > **Note**: Lutra is in early development. Core backup functionality is implemented, but some features (like `restore` command) are still planned.
 
-### Automated Setup (Recommended)
+### Download Pre-built Binary
+
+Download the latest release from [GitHub Releases](https://github.com/gustmrg/lutra/releases/latest) — no .NET SDK or repo access required:
+
+```bash
+# Download and install (linux-x64)
+curl -sLO https://github.com/gustmrg/lutra/releases/latest/download/lutra-linux-x64.tar.gz
+tar -xzf lutra-linux-x64.tar.gz
+sudo mv lutra /usr/local/bin/lutra
+sudo chmod +x /usr/local/bin/lutra
+```
+
+For ARM-based servers (Oracle Cloud, AWS Graviton, etc.), use `lutra-linux-arm64.tar.gz` instead.
+
+### Automated Setup
 
 ```bash
 # Clone the repository
@@ -32,11 +46,13 @@ sudo ./setup.sh      # System-wide installation (requires sudo)
 ```
 
 The setup script will:
-- Build Lutra from source
+- Download a pre-built binary from GitHub Releases (or build from source if .NET SDK is installed)
 - Install the binary to `/usr/local/bin/lutra` (or `~/.local/bin/lutra`)
 - Create configuration directories
 - Generate template config and .env files
 - Set proper permissions
+
+Use `./setup.sh --from-release` to force downloading the pre-built binary even when .NET SDK is available.
 
 > See [`lutra.example.yaml`](lutra.example.yaml) and [`.env.example`](.env.example) for full configuration examples.
 

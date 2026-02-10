@@ -1,0 +1,84 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+env:
+  DOTNET_VERSION: '10.0.x'
+  PROJECT_PATH: src/Lutra.CLI/Lutra.CLI.csproj
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - rid: linux-x64
+          - rid: linux-arm64
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Extract version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Publish
+        run: |
+          dotnet publish ${{ env.PROJECT_PATH }} \
+            -c Release \
+            -r ${{ matrix.rid }} \
+            --self-contained \
+            -p:PublishSingleFile=true \
+            -p:Version=${{ steps.version.outputs.VERSION }} \
+            -o publish/
+
+      - name: Create tarball
+        run: |
+          mv publish/Lutra.CLI publish/lutra
+          tar -czf lutra-${{ matrix.rid }}.tar.gz -C publish lutra
+
+      - name: Generate SHA256 checksum
+        run: sha256sum lutra-${{ matrix.rid }}.tar.gz > lutra-${{ matrix.rid }}.tar.gz.sha256
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.rid }}
+          path: |
+            lutra-${{ matrix.rid }}.tar.gz
+            lutra-${{ matrix.rid }}.tar.gz.sha256
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Lutra ${{ github.ref_name }}
+          generate_release_notes: true
+          files: |
+            artifacts/lutra-linux-x64.tar.gz
+            artifacts/lutra-linux-x64.tar.gz.sha256
+            artifacts/lutra-linux-arm64.tar.gz
+            artifacts/lutra-linux-arm64.tar.gz.sha256

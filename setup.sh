@@ -11,6 +11,63 @@ BLUE='\033[0;34m'
 RED='\033[0;31m'
 NC='\033[0m' # No Color
 
+GITHUB_REPO="gustmrg/lutra"
+FROM_RELEASE=false
+
+for arg in "$@"; do
+    case "$arg" in
+        --from-release) FROM_RELEASE=true ;;
+    esac
+done
+
+install_from_release() {
+    echo -e "${BOLD}Downloading latest release...${NC}"
+
+    ARCH=$(uname -m)
+    case "$ARCH" in
+        x86_64)  RID="linux-x64" ;;
+        aarch64) RID="linux-arm64" ;;
+        *)
+            echo -e "${RED}✗ Unsupported architecture: $ARCH${NC}"
+            exit 1
+            ;;
+    esac
+
+    TAG=$(curl -s "https://api.github.com/repos/${GITHUB_REPO}/releases/latest" \
+        | grep '"tag_name"' | cut -d'"' -f4)
+
+    if [ -z "$TAG" ]; then
+        echo -e "${RED}✗ Could not determine latest release${NC}"
+        echo "  Check https://github.com/${GITHUB_REPO}/releases"
+        exit 1
+    fi
+
+    echo -e "${BLUE}Latest release:${NC} $TAG ($RID)"
+
+    TARBALL="lutra-${RID}.tar.gz"
+    BASE_URL="https://github.com/${GITHUB_REPO}/releases/download/${TAG}"
+
+    curl -sL "${BASE_URL}/${TARBALL}" -o "/tmp/${TARBALL}"
+    curl -sL "${BASE_URL}/${TARBALL}.sha256" -o "/tmp/${TARBALL}.sha256"
+
+    echo -e "${BOLD}Verifying checksum...${NC}"
+    (cd /tmp && sha256sum -c "${TARBALL}.sha256")
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}✗ Checksum verification failed${NC}"
+        rm -f "/tmp/${TARBALL}" "/tmp/${TARBALL}.sha256"
+        exit 1
+    fi
+
+    echo -e "${GREEN}✓ Checksum verified${NC}"
+
+    tar -xzf "/tmp/${TARBALL}" -C /tmp
+    cp /tmp/lutra "$INSTALL_DIR/lutra"
+    chmod +x "$INSTALL_DIR/lutra"
+
+    rm -f "/tmp/${TARBALL}" "/tmp/${TARBALL}.sha256" /tmp/lutra
+    echo -e "${GREEN}✓ Installed to $INSTALL_DIR/lutra${NC}"
+}
+
 echo -e "${BOLD}🦦 Lutra Setup${NC}"
 echo ""
 
@@ -52,11 +109,13 @@ if ! docker ps &> /dev/null; then
     echo "  Then log out and back in."
 fi
 
-# Check .NET (for building)
-if ! command -v dotnet &> /dev/null; then
-    echo -e "${YELLOW}⚠ .NET SDK not found (needed to build from source)${NC}"
-else
+# Check .NET (for building from source)
+HAS_DOTNET=false
+if command -v dotnet &> /dev/null; then
+    HAS_DOTNET=true
     echo -e "${GREEN}✓ .NET SDK found${NC}"
+else
+    echo -e "${YELLOW}⚠ .NET SDK not found — will download pre-built binary${NC}"
 fi
 
 echo ""
@@ -79,34 +138,31 @@ fi
 echo -e "${GREEN}✓ Directories created${NC}"
 echo ""
 
-# Build and install binary
-echo -e "${BOLD}Building Lutra...${NC}"
+# Build or download binary
+if [ "$FROM_RELEASE" = true ] || [ "$HAS_DOTNET" = false ]; then
+    install_from_release
+else
+    echo -e "${BOLD}Building Lutra...${NC}"
 
-if ! command -v dotnet &> /dev/null; then
-    echo -e "${RED}✗ Cannot build: .NET SDK not found${NC}"
-    exit 1
+    dotnet publish src/Lutra.CLI/Lutra.CLI.csproj \
+        -c Release \
+        -r linux-x64 \
+        --self-contained \
+        -p:PublishSingleFile=true \
+        -o dist/ \
+        > /dev/null 2>&1
+
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}✗ Build failed${NC}"
+        exit 1
+    fi
+
+    echo -e "${GREEN}✓ Build successful${NC}"
+
+    cp dist/Lutra.CLI "$INSTALL_DIR/lutra"
+    chmod +x "$INSTALL_DIR/lutra"
+    echo -e "${GREEN}✓ Installed to $INSTALL_DIR/lutra${NC}"
 fi
-
-dotnet publish src/Lutra.CLI/Lutra.CLI.csproj \
-    -c Release \
-    -r linux-x64 \
-    --self-contained \
-    -p:PublishSingleFile=true \
-    -o dist/ \
-    > /dev/null 2>&1
-
-if [ $? -ne 0 ]; then
-    echo -e "${RED}✗ Build failed${NC}"
-    exit 1
-fi
-
-echo -e "${GREEN}✓ Build successful${NC}"
-
-# Install binary
-echo -e "${BOLD}Installing binary...${NC}"
-cp dist/Lutra.CLI "$INSTALL_DIR/lutra"
-chmod +x "$INSTALL_DIR/lutra"
-echo -e "${GREEN}✓ Installed to $INSTALL_DIR/lutra${NC}"
 echo ""
 
 # Create template configuration
