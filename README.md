@@ -6,6 +6,31 @@ Lutra is a CLI tool that automates database backups for containerized databases 
 
 It uses `docker exec` to run native dump tools (`pg_dump`, `mongodump`, `sqlcmd`) inside your containers, streams the output with optional gzip compression, and manages retention automatically. Scheduling is handled by systemd timers, not a custom daemon.
 
+## Table of Contents
+
+- [Supported Databases](#supported-databases)
+- [Quick Start](#quick-start)
+  - [Download Pre-built Binary](#download-pre-built-binary)
+  - [Automated Setup](#automated-setup)
+  - [Manual Setup](#manual-setup)
+- [Commands](#commands)
+  - [Planned Features](#planned-features)
+  - [Global Options](#global-options)
+- [Configuration Reference](#configuration-reference)
+  - [Global Settings](#global-settings)
+  - [Database Target Settings](#database-target-settings)
+  - [Full Example](#full-example)
+- [How It Works](#how-it-works)
+  - [Backup File Structure](#backup-file-structure)
+  - [Retention Policy](#retention-policy)
+- [Project Structure](#project-structure)
+- [Downloading Backups to a Local Machine](#downloading-backups-to-a-local-machine)
+- [Security](#security)
+- [Requirements](#requirements)
+- [Building from Source](#building-from-source)
+- [Tech Stack](#tech-stack)
+- [License](#license)
+
 ## Supported Databases
 
 | Database   | Dump Tool    | Formats                          |
@@ -342,10 +367,9 @@ Lutra/
 ├── setup.sh                                # Automated installation script
 ├── lutra.example.yaml                      # Example configuration file
 ├── .env.example                            # Example environment file
-├── CLAUDE.md                               # Developer guidance
 ├── Lutra.slnx                              # Solution file (XML format)
 ├── README.md
-└── LICENSE
+└── LICENSE.md
 ```
 
 ## Downloading Backups to a Local Machine
