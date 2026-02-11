@@ -1,5 +1,7 @@
 # Lutra Configuration Example
-# Copy this to /etc/lutra/lutra.yaml and customize for your environment
+# Copy this file and customize for your environment:
+#   System-wide install: /etc/lutra/lutra.yaml
+#   User install:        ~/.config/lutra/lutra.yaml
 
 # Base directory where all backup files will be stored
 backup_directory: /var/backups/lutra
