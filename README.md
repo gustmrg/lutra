@@ -338,6 +338,12 @@ rsync -avz vps:/var/backups/lutra/ ~/backups/lutra/
 # Automated via cron on your local machine (or Raspberry Pi)
 # crontab -e
 0 6 * * * rsync -avz vps:/var/backups/lutra/ ~/backups/lutra/
+
+# Using scp (single target)
+scp -r vps:/var/backups/lutra/my-postgres/ ~/backups/lutra/my-postgres/
+
+# Using scp (all backups)
+scp -r vps:/var/backups/lutra/ ~/backups/lutra/
 ```
 
 ## Security
