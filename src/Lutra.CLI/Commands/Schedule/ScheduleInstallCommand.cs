@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using Lutra.CLI.Commands.Config;
 using Lutra.CLI.Infrastructure;
 using Lutra.Core.Configuration;
 using Spectre.Console;
@@ -28,6 +29,8 @@ public sealed class ScheduleInstallCommand : AsyncCommand<TargetSettings>
 
             var config = ServiceFactory.LoadConfig(settings);
             var lutraPath = Environment.ProcessPath ?? "lutra";
+            var resolvedConfigPath = ConfigFileHelper.ResolveConfigPath(settings.ConfigPath);
+            var resolvedEnvPath = ConfigFileHelper.ResolveEnvPath(settings.EnvFilePath);
 
             var targets = settings.Target is not null
                 ? [ServiceFactory.ResolveTarget(config, settings.Target)]
@@ -36,7 +39,7 @@ public sealed class ScheduleInstallCommand : AsyncCommand<TargetSettings>
             foreach (var target in targets)
             {
                 var unitName = $"lutra-backup-{target.Name}";
-                InstallUnit(unitName, target, lutraPath, settings.ConfigPath, settings.EnvFilePath);
+                InstallUnit(unitName, target, lutraPath, resolvedConfigPath, resolvedEnvPath);
                 AnsiConsole.MarkupLine($"  [green]Installed[/] {unitName}.timer ({target.Schedule.EscapeMarkup()})");
             }
 

@@ -17,6 +17,17 @@ public static class ConfigFileHelper
         if (!Environment.IsPrivilegedProcess && configPath == DefaultSystemConfigPath)
             return Path.Combine(ConfigTemplates.GetDefaultConfigDirectory(), "lutra.yaml");
 
+        if (Environment.IsPrivilegedProcess && configPath == DefaultSystemConfigPath)
+        {
+            var sudoConfigDir = GetSudoUserConfigDirectory();
+            if (sudoConfigDir is not null)
+            {
+                var sudoConfigPath = Path.Combine(sudoConfigDir, "lutra.yaml");
+                if (File.Exists(sudoConfigPath))
+                    return sudoConfigPath;
+            }
+        }
+
         return configPath;
     }
 
@@ -25,7 +36,41 @@ public static class ConfigFileHelper
         if (!Environment.IsPrivilegedProcess && envFilePath == DefaultSystemEnvPath)
             return Path.Combine(ConfigTemplates.GetDefaultConfigDirectory(), ".env");
 
+        if (Environment.IsPrivilegedProcess && envFilePath == DefaultSystemEnvPath)
+        {
+            var sudoConfigDir = GetSudoUserConfigDirectory();
+            if (sudoConfigDir is not null)
+            {
+                var sudoEnvPath = Path.Combine(sudoConfigDir, ".env");
+                if (File.Exists(sudoEnvPath))
+                    return sudoEnvPath;
+            }
+        }
+
         return envFilePath;
+    }
+
+    /// <summary>
+    /// When running under sudo, resolves the original user's config directory
+    /// by reading SUDO_USER and looking up their home in /etc/passwd.
+    /// </summary>
+    private static string? GetSudoUserConfigDirectory()
+    {
+        var sudoUser = Environment.GetEnvironmentVariable("SUDO_USER");
+        if (string.IsNullOrEmpty(sudoUser))
+            return null;
+
+        if (!File.Exists("/etc/passwd"))
+            return null;
+
+        foreach (var line in File.ReadLines("/etc/passwd"))
+        {
+            var fields = line.Split(':');
+            if (fields.Length >= 6 && fields[0] == sudoUser)
+                return Path.Combine(fields[5], ".config", "lutra");
+        }
+
+        return null;
     }
 
     public static void CreateDirectoryIfNeeded(string path)
