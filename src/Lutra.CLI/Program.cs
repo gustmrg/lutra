@@ -56,6 +56,12 @@ app.Configure(config =>
 
         schedule.AddCommand<ScheduleInstallCommand>("install")
             .WithDescription("Install systemd timer units for scheduled backups.");
+
+        schedule.AddCommand<ScheduleRemoveCommand>("remove")
+            .WithDescription("Remove systemd timer units for scheduled backups.");
+
+        schedule.AddCommand<ScheduleListCommand>("list")
+            .WithDescription("List installed Lutra systemd timer units.");
     });
 });
 

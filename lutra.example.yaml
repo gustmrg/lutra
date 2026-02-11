@@ -20,7 +20,7 @@ databases:
     database: mydb                   # Database name inside the container
     username: postgres               # Database user
     password_env: POSTGRES_PASSWORD  # Environment variable name (from .env file)
-    schedule: "0 3 * * *"           # Cron: Daily at 3:00 AM
+    schedule: "*-*-* 03:00:00"      # Daily at 3:00 AM
     format: custom                   # custom (.dump) or plain (.sql)
     compression: gzip                # gzip or none
 
@@ -29,7 +29,7 @@ databases:
     type: mongodb
     container: mongo-container
     database: mydb
-    schedule: "0 4 * * 0"           # Cron: Weekly on Sundays at 4:00 AM
+    schedule: "Sun *-*-* 04:00:00"  # Weekly on Sundays at 4:00 AM
     compression: gzip
     # Note: MongoDB doesn't require username/password if auth is disabled
     # If auth is enabled, add username and password_env
@@ -41,7 +41,7 @@ databases:
     database: MyDatabase
     username: sa
     password_env: SQLSERVER_PASSWORD
-    schedule: "0 2 * * *"           # Cron: Daily at 2:00 AM
+    schedule: "*-*-* 02:00:00"      # Daily at 2:00 AM
     compression: gzip
 
   # Example with custom retention (overrides global settings)
@@ -51,20 +51,23 @@ databases:
     database: critical_production
     username: postgres
     password_env: CRITICAL_DB_PASSWORD
-    schedule: "0 */6 * * *"         # Cron: Every 6 hours
+    schedule: "*-*-* 00/6:00:00"    # Every 6 hours
     format: custom
     compression: gzip
     retention:
       max_count: 20      # Keep more backups for critical databases
       max_age_days: 90   # Retain for 90 days
 
-# Schedule Syntax (systemd OnCalendar format, or standard cron format)
+# Schedule Syntax (systemd OnCalendar format)
+# Uses systemd calendar expressions, NOT cron syntax.
 #
-# Cron format examples:
-# "0 3 * * *"       - Daily at 3:00 AM
-# "0 */6 * * *"     - Every 6 hours
-# "0 2 * * 0"       - Weekly on Sundays at 2:00 AM
-# "0 1 1 * *"       - Monthly on the 1st at 1:00 AM
-# "*/15 * * * *"    - Every 15 minutes
+# Examples:
+# "*-*-* 03:00:00"       - Daily at 3:00 AM
+# "*-*-* 00/6:00:00"     - Every 6 hours
+# "Sun *-*-* 02:00:00"   - Weekly on Sundays at 2:00 AM
+# "*-*-01 01:00:00"      - Monthly on the 1st at 1:00 AM
+# "*-*-* *:0/15:00"      - Every 15 minutes
+# "daily"                - Shorthand for daily at midnight
 #
-# See: https://crontab.guru/ for cron syntax help
+# Validate with: systemd-analyze calendar "<expression>"
+# See: man systemd.time(7)

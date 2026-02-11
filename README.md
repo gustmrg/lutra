@@ -91,7 +91,7 @@ databases:
     database: app_production
     username: postgres
     password_env: LUTRA_POSTGRES_PASSWORD
-    schedule: "0 3 * * *"
+    schedule: "*-*-* 03:00:00"
     format: custom
     compression: gzip
 ```
@@ -118,42 +118,46 @@ sudo lutra schedule install
 
 ## Commands
 
-### Currently Implemented
-
 ```bash
-# Backup commands
-lutra backup run                          # Back up all configured databases
-lutra backup run --target my-postgres     # Back up a specific database
-lutra backup list                         # List configured databases and schedules
+# Backup
+lutra backup run                             # Back up all configured databases
+lutra backup run --target my-postgres        # Back up a specific database
+lutra backup list                            # List configured databases and schedules
 
 # History
-lutra history                             # Show backup history for all targets
-lutra history --target my-postgres        # Show history for specific target
+lutra history                                # Show backup history for all targets
+lutra history --target my-postgres           # Show history for specific target
 
 # Maintenance
-lutra cleanup                             # Remove old backups per retention policy
-lutra cleanup --target my-postgres        # Clean up specific target
+lutra cleanup                                # Remove old backups per retention policy
+lutra cleanup --target my-postgres           # Clean up specific target
 
 # Configuration
-lutra config validate                     # Validate config file
+lutra config init                            # Create config directories and template files
+lutra config validate                        # Validate config file
+lutra config reset                           # Reset config files to template defaults
 
-# Scheduling
-lutra schedule install                    # Generate and install systemd timers
-lutra schedule install --target my-postgres  # Install timer for specific target
+# Scheduling (systemd timers)
+sudo lutra schedule install                  # Install systemd timers for all targets
+sudo lutra schedule install --target my-postgres  # Install timer for specific target
+lutra schedule list                          # List installed timers and their status
+sudo lutra schedule remove                   # Remove all Lutra timer units
+sudo lutra schedule remove --target my-postgres   # Remove timer for specific target
+
+# Uninstall
+sudo lutra uninstall                         # Remove all Lutra artifacts (config, timers, binary)
 ```
 
 ### Planned Features
 
-The following commands are planned but not yet implemented:
-
 ```bash
-lutra restore                             # Interactive restore (select DB → backup)
-lutra cleanup --dry-run                   # Preview what would be deleted
+lutra restore                                # Interactive restore (select DB → backup)
+lutra cleanup --dry-run                      # Preview what would be deleted
 ```
 
 ### Global Options
 
-All commands support these options:
+Most commands support these options:
 
 ```bash
 --config <PATH>       # Path to config file (default: /etc/lutra/lutra.yaml)
@@ -180,7 +184,7 @@ All commands support these options:
 | `database`     | string    | —              | Database name inside the container             |
 | `username`     | string    | —              | Database user (required for PG and SQL Server) |
 | `password_env` | string    | —              | Environment variable name holding the password |
-| `schedule`     | cron expr | `"0 3 * * *"` | Cron expression for systemd timer generation   |
+| `schedule`     | string    | `"*-*-* 03:00:00"` | Systemd calendar expression for timer generation |
 | `format`       | enum      | `custom`       | `custom` or `plain` (PostgreSQL only)          |
 | `compression`  | enum      | `gzip`         | `gzip` or `none`                               |
 | `retention`    | object    | global default | Override global retention for this target       |
@@ -201,7 +205,7 @@ databases:
     database: icon_production
     username: postgres
     password_env: LUTRA_ICON_DB_PASSWORD
-    schedule: "0 3 * * *"
+    schedule: "*-*-* 03:00:00"
     format: custom
     compression: gzip
     retention:
@@ -214,14 +218,14 @@ databases:
     database: FinanceProduction
     username: sa
     password_env: LUTRA_FINANCE_DB_PASSWORD
-    schedule: "0 2 * * *"
+    schedule: "*-*-* 02:00:00"
     compression: gzip
 
   - name: app-mongo
     type: mongodb
     container: app-mongo
     database: app_data
-    schedule: "0 4 * * 0"  # Weekly on Sundays
+    schedule: "Sun *-*-* 04:00:00"  # Weekly on Sundays
     compression: gzip
 ```
 
@@ -280,49 +284,66 @@ Per-database retention settings override global defaults.
 ```
 Lutra/
 ├── src/
-│   ├── Lutra.CLI/                        # Entry point + Spectre.Console commands
+│   ├── Lutra.CLI/                          # Entry point + Spectre.Console commands
 │   │   ├── Program.cs
 │   │   ├── Commands/
 │   │   │   ├── Backup/
-│   │   │   │   ├── BackupRunCommand.cs   # Run backups (single or all)
-│   │   │   │   └── BackupListCommand.cs  # List configured databases
+│   │   │   │   ├── BackupRunCommand.cs     # Run backups (single or all)
+│   │   │   │   └── BackupListCommand.cs    # List configured databases
 │   │   │   ├── History/
-│   │   │   │   └── HistoryCommand.cs     # Show backup history
+│   │   │   │   └── HistoryCommand.cs       # Show backup history
 │   │   │   ├── Cleanup/
-│   │   │   │   └── CleanupCommand.cs     # Trigger retention cleanup
+│   │   │   │   └── CleanupCommand.cs       # Trigger retention cleanup
 │   │   │   ├── Config/
-│   │   │   │   └── ConfigValidateCommand.cs # Validate configuration
+│   │   │   │   ├── ConfigInitCommand.cs    # Initialize config directories/files
+│   │   │   │   ├── ConfigInitSettings.cs   # Settings for config init
+│   │   │   │   ├── ConfigValidateCommand.cs # Validate configuration
+│   │   │   │   ├── ConfigResetCommand.cs   # Reset config to template defaults
+│   │   │   │   └── ConfigFileHelper.cs     # Shared path resolution helpers
 │   │   │   ├── Schedule/
-│   │   │   │   └── ScheduleInstallCommand.cs # Install systemd timers
-│   │   │   ├── GlobalSettings.cs         # Base CLI settings
-│   │   │   └── TargetSettings.cs         # Settings for target-specific commands
+│   │   │   │   ├── ScheduleInstallCommand.cs # Install systemd timers
+│   │   │   │   ├── ScheduleRemoveCommand.cs  # Remove systemd timers
+│   │   │   │   └── ScheduleListCommand.cs    # List installed timers
+│   │   │   ├── Uninstall/
+│   │   │   │   ├── UninstallCommand.cs     # Remove all Lutra artifacts
+│   │   │   │   └── UninstallSettings.cs    # Settings for uninstall
+│   │   │   ├── GlobalSettings.cs           # Base CLI settings (--config, --env-file)
+│   │   │   └── TargetSettings.cs           # Settings for target-specific commands
 │   │   ├── Infrastructure/
-│   │   │   └── ServiceFactory.cs         # Dependency creation
+│   │   │   └── ServiceFactory.cs           # Dependency creation
 │   │   └── Lutra.CLI.csproj
 │   │
-│   └── Lutra.Core/                       # Core logic — no UI dependencies
+│   └── Lutra.Core/                         # Core logic — no UI dependencies
 │       ├── Configuration/
-│       │   ├── BackupConfig.cs           # Root config model
-│       │   ├── DatabaseTarget.cs         # Per-database config
-│       │   ├── RetentionPolicy.cs        # Retention rules
-│       │   ├── ConfigurationLoader.cs    # YAML loading + validation
-│       │   └── ConfigurationException.cs # Config errors
+│       │   ├── BackupConfig.cs             # Root config model
+│       │   ├── DatabaseTarget.cs           # Per-database config
+│       │   ├── RetentionPolicy.cs          # Retention rules
+│       │   ├── DatabaseType.cs             # PostgreSql/SqlServer/MongoDb enum
+│       │   ├── CompressionType.cs          # None/Gzip enum
+│       │   ├── IConfigLoader.cs            # Config loader interface
+│       │   ├── YamlConfigLoader.cs         # YAML config loading + validation
+│       │   ├── ConfigTemplates.cs          # Default config/env file templates
+│       │   └── ConfigurationException.cs   # Config errors
 │       ├── Backup/
-│       │   ├── IBackupProvider.cs        # Interface for DB-specific logic
-│       │   ├── PostgresBackupProvider.cs # PostgreSQL dump logic
-│       │   ├── SqlServerBackupProvider.cs # SQL Server backup logic
-│       │   ├── MongoBackupProvider.cs    # MongoDB dump logic
-│       │   ├── BackupOrchestrator.cs     # Coordinates backup workflow
-│       │   ├── BackupResult.cs           # Result of a backup operation
-│       │   └── DockerExecCommand.cs      # Docker exec command model
+│       │   ├── IBackupProvider.cs          # Interface for DB-specific logic
+│       │   ├── PostgresBackupProvider.cs   # PostgreSQL dump logic
+│       │   ├── SqlServerBackupProvider.cs  # SQL Server backup logic
+│       │   ├── MongoBackupProvider.cs      # MongoDB dump logic
+│       │   ├── BackupOrchestrator.cs       # Coordinates backup workflow
+│       │   ├── BackupResult.cs             # Result of a backup operation
+│       │   ├── IProcessExecutor.cs         # Process execution interface
+│       │   └── DockerProcessExecutor.cs    # Docker exec implementation
 │       ├── History/
-│       │   ├── BackupHistoryService.cs   # Tracks backup metadata (JSON)
-│       │   └── BackupRecord.cs           # Single backup entry
+│       │   ├── IBackupHistoryService.cs    # History service interface
+│       │   ├── BackupHistoryService.cs     # Tracks backup metadata (JSON)
+│       │   └── BackupRecord.cs             # Single backup entry
 │       └── Lutra.Core.csproj
 │
-├── setup.sh                              # Automated installation script
-├── CLAUDE.md                             # Developer guidance
-├── Lutra.slnx                            # Solution file (XML format)
+├── setup.sh                                # Automated installation script
+├── lutra.example.yaml                      # Example configuration file
+├── .env.example                            # Example environment file
+├── CLAUDE.md                               # Developer guidance
+├── Lutra.slnx                              # Solution file (XML format)
 ├── README.md
 └── LICENSE
 ```

@@ -52,7 +52,7 @@ databases:
     database: mydb                   # Database name inside container
     username: postgres
     password_env: POSTGRES_PASSWORD  # Reference to env var in .env file
-    schedule: "0 3 * * *"           # Daily at 3 AM
+    schedule: "*-*-* 03:00:00"      # Daily at 3 AM (systemd calendar expression)
     format: custom                   # custom (.dump) or plain (.sql)
     compression: gzip
 
@@ -61,7 +61,7 @@ databases:
   #   type: mongodb
   #   container: mongo-container
   #   database: mydb
-  #   schedule: "0 4 * * 0"         # Weekly on Sundays at 4 AM
+  #   schedule: "Sun *-*-* 04:00:00" # Weekly on Sundays at 4 AM
   #   compression: gzip
 
   # SQL Server Example
@@ -71,7 +71,7 @@ databases:
   #   database: MyDatabase
   #   username: sa
   #   password_env: SQLSERVER_PASSWORD
-  #   schedule: "0 2 * * *"         # Daily at 2 AM
+  #   schedule: "*-*-* 02:00:00"    # Daily at 2 AM
   #   compression: gzip
 """;
     }
