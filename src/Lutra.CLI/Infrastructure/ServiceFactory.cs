@@ -1,4 +1,5 @@
 using Lutra.CLI.Commands;
+using Lutra.CLI.Commands.Config;
 using Lutra.Core.Backup;
 using Lutra.Core.Configuration;
 using Lutra.Core.History;
@@ -9,9 +10,12 @@ internal static class ServiceFactory
 {
     public static BackupConfig LoadConfig(GlobalSettings settings)
     {
-        YamlConfigLoader.LoadEnvFile(settings.EnvFilePath);
+        var envPath = ConfigFileHelper.ResolveEnvPath(settings.EnvFilePath);
+        var configPath = ConfigFileHelper.ResolveConfigPath(settings.ConfigPath);
+
+        YamlConfigLoader.LoadEnvFile(envPath);
         var loader = new YamlConfigLoader();
-        return loader.Load(settings.ConfigPath);
+        return loader.Load(configPath);
     }
 
     public static BackupOrchestrator CreateOrchestrator(BackupConfig config)
