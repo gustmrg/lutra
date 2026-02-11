@@ -1,9 +1,9 @@
-using Lutra.CLI.Commands;
 using Lutra.CLI.Commands.Backup;
 using Lutra.CLI.Commands.Cleanup;
 using Lutra.CLI.Commands.Config;
 using Lutra.CLI.Commands.History;
 using Lutra.CLI.Commands.Schedule;
+using Lutra.CLI.Commands.Uninstall;
 using System.Reflection;
 using Spectre.Console.Cli;
 
@@ -42,7 +42,13 @@ app.Configure(config =>
 
         cfg.AddCommand<ConfigValidateCommand>("validate")
             .WithDescription("Validate the configuration file.");
+
+        cfg.AddCommand<ConfigResetCommand>("reset")
+            .WithDescription("Reset configuration files to template defaults.");
     });
+
+    config.AddCommand<UninstallCommand>("uninstall")
+        .WithDescription("Remove all Lutra artifacts (config, timers, binary).");
 
     config.AddBranch<CommandSettings>("schedule", schedule =>
     {
