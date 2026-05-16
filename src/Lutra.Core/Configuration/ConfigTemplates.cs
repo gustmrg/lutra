@@ -44,6 +44,14 @@ retention:
   max_count: 10        # Keep at most 10 backups per target
   max_age_days: 30     # Delete backups older than 30 days (when max_count also exceeded)
 
+# Health check thresholds (optional — sensible defaults are built in)
+# health:
+#   min_samples: 5                 # Minimum backups needed for statistical analysis
+#   window_size: 10                # Number of recent backups to analyze
+#   size_deviation_threshold: 2.0  # Standard deviations for size anomaly
+#   failure_streak_warning: 2      # Consecutive failures before warning
+#   failure_streak_critical: 3     # Consecutive failures before critical alert
+
 databases:
   # PostgreSQL Example
   - name: example-postgres

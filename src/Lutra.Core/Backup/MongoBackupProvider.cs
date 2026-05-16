@@ -6,7 +6,7 @@ public class MongoBackupProvider : IBackupProvider
 {
     public DatabaseType Type => DatabaseType.MongoDb;
 
-    public DockerExecCommand BuildDumpCommand(DatabaseTarget target)
+    public DockerExecCommand BuildDumpCommand(DatabaseTarget target, string backupId)
     {
         var args = new List<string>
         {

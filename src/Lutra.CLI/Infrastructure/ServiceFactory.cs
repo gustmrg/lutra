@@ -2,6 +2,7 @@ using Lutra.CLI.Commands;
 using Lutra.CLI.Commands.Config;
 using Lutra.Core.Backup;
 using Lutra.Core.Configuration;
+using Lutra.Core.Health;
 using Lutra.Core.History;
 
 namespace Lutra.CLI.Infrastructure;
@@ -34,6 +35,11 @@ internal static class ServiceFactory
     public static BackupHistoryService CreateHistoryService(BackupConfig config)
     {
         return new BackupHistoryService(config.BackupDirectory);
+    }
+
+    public static AnomalyDetector CreateAnomalyDetector(BackupConfig config)
+    {
+        return new AnomalyDetector(config.Health ?? new HealthConfig());
     }
 
     public static DatabaseTarget ResolveTarget(BackupConfig config, string targetName)

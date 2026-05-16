@@ -1,6 +1,7 @@
 using Lutra.CLI.Commands.Backup;
 using Lutra.CLI.Commands.Cleanup;
 using Lutra.CLI.Commands.Config;
+using Lutra.CLI.Commands.Health;
 using Lutra.CLI.Commands.History;
 using Lutra.CLI.Commands.Schedule;
 using Lutra.CLI.Commands.Uninstall;
@@ -25,6 +26,9 @@ app.Configure(config =>
 
         backup.AddCommand<BackupListCommand>("list")
             .WithDescription("List configured database targets.");
+
+        backup.AddCommand<BackupVerifyFileCommand>("verify-file")
+            .WithDescription("Verify a backup file against its checksum and manifest sidecars.");
     });
 
     config.AddCommand<HistoryCommand>("history")
@@ -32,6 +36,9 @@ app.Configure(config =>
 
     config.AddCommand<CleanupCommand>("cleanup")
         .WithDescription("Run retention cleanup to remove old backups.");
+
+    config.AddCommand<HealthCommand>("health")
+        .WithDescription("Analyze backup health and detect anomalies.");
 
     config.AddBranch<CommandSettings>("config", cfg =>
     {
@@ -45,6 +52,9 @@ app.Configure(config =>
 
         cfg.AddCommand<ConfigResetCommand>("reset")
             .WithDescription("Reset configuration files to template defaults.");
+
+        cfg.AddCommand<ConfigGenerateCommand>("generate")
+            .WithDescription("Generate config from a docker-compose file.");
     });
 
     config.AddCommand<UninstallCommand>("uninstall")

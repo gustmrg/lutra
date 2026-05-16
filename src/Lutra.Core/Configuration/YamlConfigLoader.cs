@@ -78,8 +78,12 @@ public class YamlConfigLoader : IConfigLoader
         if (string.IsNullOrWhiteSpace(config.BackupDirectory))
             throw new ConfigurationException("'backup_directory' is required.");
 
+        ValidateRetention("retention", config.Retention);
+
         if (config.Databases is not { Count: > 0 })
             throw new ConfigurationException("At least one database target must be configured under 'databases'.");
+
+        var targetNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         for (var i = 0; i < config.Databases.Count; i++)
         {
@@ -88,11 +92,77 @@ public class YamlConfigLoader : IConfigLoader
 
             if (string.IsNullOrWhiteSpace(db.Name))
                 throw new ConfigurationException($"{prefix}: 'name' is required.");
+            if (!IsSafeName(db.Name))
+                throw new ConfigurationException($"{prefix} ({db.Name}): 'name' cannot contain path separators.");
+            if (!targetNames.Add(db.Name))
+                throw new ConfigurationException($"{prefix} ({db.Name}): duplicate target name.");
             if (string.IsNullOrWhiteSpace(db.Container))
                 throw new ConfigurationException($"{prefix} ({db.Name}): 'container' is required.");
             if (string.IsNullOrWhiteSpace(db.Database))
                 throw new ConfigurationException($"{prefix} ({db.Name}): 'database' is required.");
+            if (string.IsNullOrWhiteSpace(db.Schedule))
+                throw new ConfigurationException($"{prefix} ({db.Name}): 'schedule' is required.");
+            if (LooksLikeCronExpression(db.Schedule))
+                throw new ConfigurationException(
+                    $"{prefix} ({db.Name}): 'schedule' looks like cron syntax. Use a systemd calendar expression such as \"*-*-* 03:00:00\".");
+
+            if (db.Retention is not null)
+                ValidateRetention($"{prefix} ({db.Name}).retention", db.Retention);
+
+            if (db.PasswordEnv is not null && Environment.GetEnvironmentVariable(db.PasswordEnv) is null)
+                throw new ConfigurationException(
+                    $"{prefix} ({db.Name}): password_env '{db.PasswordEnv}' is not set in the environment or .env file.");
+
+            switch (db.Type)
+            {
+                case DatabaseType.PostgreSql:
+                    if (string.IsNullOrWhiteSpace(db.Username))
+                        throw new ConfigurationException($"{prefix} ({db.Name}): 'username' is required for PostgreSQL.");
+                    ValidatePostgresFormat(prefix, db);
+                    break;
+                case DatabaseType.SqlServer:
+                    if (string.IsNullOrWhiteSpace(db.Username))
+                        throw new ConfigurationException($"{prefix} ({db.Name}): 'username' is required for SQL Server.");
+                    if (!string.IsNullOrWhiteSpace(db.Format))
+                        throw new ConfigurationException($"{prefix} ({db.Name}): 'format' is only supported for PostgreSQL.");
+                    break;
+                case DatabaseType.MongoDb:
+                    if (!string.IsNullOrWhiteSpace(db.Format))
+                        throw new ConfigurationException($"{prefix} ({db.Name}): 'format' is only supported for PostgreSQL.");
+                    break;
+                default:
+                    throw new ConfigurationException($"{prefix} ({db.Name}): unsupported database type '{db.Type}'.");
+            }
         }
+    }
+
+    private static void ValidateRetention(string prefix, RetentionPolicy retention)
+    {
+        if (retention.MaxCount <= 0)
+            throw new ConfigurationException($"{prefix}: 'max_count' must be greater than zero.");
+        if (retention.MaxAgeDays <= 0)
+            throw new ConfigurationException($"{prefix}: 'max_age_days' must be greater than zero.");
+    }
+
+    private static void ValidatePostgresFormat(string prefix, DatabaseTarget db)
+    {
+        if (string.IsNullOrWhiteSpace(db.Format))
+            return;
+
+        var format = db.Format.ToLowerInvariant();
+        if (format is not ("custom" or "plain"))
+            throw new ConfigurationException($"{prefix} ({db.Name}): PostgreSQL 'format' must be 'custom' or 'plain'.");
+    }
+
+    private static bool IsSafeName(string value)
+    {
+        return !value.Contains('/') && !value.Contains('\\');
+    }
+
+    private static bool LooksLikeCronExpression(string value)
+    {
+        var parts = value.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length == 5;
     }
 
     /// <summary>

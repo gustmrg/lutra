@@ -4,17 +4,24 @@ namespace Lutra.Core.Backup;
 
 public class SqlServerBackupProvider : IBackupProvider
 {
-    private const string ContainerBackupPath = "/tmp/lutra_backup.bak";
-
     public DatabaseType Type => DatabaseType.SqlServer;
 
     public bool StreamsToStdout => false;
 
-    public string? GetContainerBackupPath(DatabaseTarget target) => ContainerBackupPath;
-
-    public DockerExecCommand BuildDumpCommand(DatabaseTarget target)
+    public string? GetContainerBackupPath(DatabaseTarget target, string backupId)
     {
-        var backupSql = $"BACKUP DATABASE [{target.Database}] TO DISK = N'{ContainerBackupPath}' WITH FORMAT, INIT";
+        var safeTargetName = new string(target.Name.Select(c =>
+            char.IsLetterOrDigit(c) || c is '-' or '_' or '.' ? c : '_').ToArray());
+
+        return $"/tmp/lutra_{safeTargetName}_{backupId}.bak";
+    }
+
+    public DockerExecCommand BuildDumpCommand(DatabaseTarget target, string backupId)
+    {
+        var containerBackupPath = GetContainerBackupPath(target, backupId)
+            ?? throw new InvalidOperationException("SQL Server backup path could not be generated.");
+
+        var backupSql = $"BACKUP DATABASE [{target.Database}] TO DISK = N'{containerBackupPath}' WITH FORMAT, INIT";
 
         var args = new List<string>
         {

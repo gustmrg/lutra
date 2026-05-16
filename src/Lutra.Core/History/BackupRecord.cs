@@ -16,6 +16,14 @@ public class BackupRecord
     [JsonPropertyName("file_size_bytes")]
     public required long FileSizeBytes { get; init; }
 
+    [JsonPropertyName("sha256")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Sha256 { get; init; }
+
+    [JsonPropertyName("manifest_file_name")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? ManifestFileName { get; init; }
+
     [JsonPropertyName("duration_ms")]
     public required long DurationMs { get; init; }
 

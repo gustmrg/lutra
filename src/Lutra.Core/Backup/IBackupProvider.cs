@@ -27,7 +27,7 @@ public interface IBackupProvider
     /// A <see cref="DockerExecCommand"/> that can be passed to an <see cref="IProcessExecutor"/>
     /// to execute the dump inside the container.
     /// </returns>
-    DockerExecCommand BuildDumpCommand(DatabaseTarget target);
+    DockerExecCommand BuildDumpCommand(DatabaseTarget target, string backupId);
 
     /// <summary>
     /// Returns the file extension for the backup file based on the database type and format.
@@ -59,7 +59,7 @@ public interface IBackupProvider
     /// The absolute path inside the container, or <see langword="null"/> if the dump
     /// streams to stdout.
     /// </returns>
-    string? GetContainerBackupPath(DatabaseTarget target) => null;
+    string? GetContainerBackupPath(DatabaseTarget target, string backupId) => null;
 }
 
 /// <summary>

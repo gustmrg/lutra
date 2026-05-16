@@ -56,6 +56,7 @@ public sealed class BackupRunCommand : AsyncCommand<TargetSettings>
         table.AddColumn("Status");
         table.AddColumn("Duration");
         table.AddColumn("Size");
+        table.AddColumn("SHA-256");
         table.AddColumn("File");
 
         foreach (var result in results)
@@ -68,6 +69,7 @@ public sealed class BackupRunCommand : AsyncCommand<TargetSettings>
                     "[green]OK[/]",
                     result.Duration.TotalSeconds.ToString("0.0") + "s",
                     size,
+                    result.Sha256 is null ? "-" : result.Sha256[..12],
                     result.FilePath?.EscapeMarkup() ?? "-");
             }
             else
@@ -76,6 +78,7 @@ public sealed class BackupRunCommand : AsyncCommand<TargetSettings>
                     result.TargetName.EscapeMarkup(),
                     "[red]FAILED[/]",
                     result.Duration.TotalSeconds.ToString("0.0") + "s",
+                    "-",
                     "-",
                     result.ErrorMessage?.EscapeMarkup() ?? "Unknown error");
             }

@@ -8,5 +8,6 @@ public record BackupResult
     public required TimeSpan Duration { get; init; }
     public string? FilePath { get; init; }
     public long? FileSizeBytes { get; init; }
+    public string? Sha256 { get; init; }
     public string? ErrorMessage { get; init; }
 }

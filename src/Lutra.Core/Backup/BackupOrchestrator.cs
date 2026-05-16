@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.IO.Compression;
+using System.Reflection;
 using Lutra.Core.Configuration;
 using Lutra.Core.History;
 
@@ -28,30 +29,65 @@ public class BackupOrchestrator
     {
         var startTime = DateTime.UtcNow;
         var stopwatch = Stopwatch.StartNew();
+        var backupId = Guid.NewGuid().ToString("N")[..12];
+        string? tempFilePath = null;
+        string? finalFilePath = null;
+        string? fileName = null;
+        var finalMoved = false;
+        var artifactRecorded = false;
 
         try
         {
+            await using var targetLock = AcquireTargetLock(target);
+
             if (!_providers.TryGetValue(target.Type, out var provider))
                 throw new NotSupportedException($"No backup provider registered for database type '{target.Type}'.");
 
-            var command = provider.BuildDumpCommand(target);
+            var command = provider.BuildDumpCommand(target, backupId);
             var extension = provider.GetFileExtension(target);
-            var fileName = BuildFileName(target.Name, startTime, extension, target.Compression);
+            fileName = BuildFileName(target.Name, startTime, backupId, extension, target.Compression);
             var targetDir = Path.Combine(_config.BackupDirectory, target.Name);
             Directory.CreateDirectory(targetDir);
-            var filePath = Path.Combine(targetDir, fileName);
+            finalFilePath = Path.Combine(targetDir, fileName);
+            tempFilePath = Path.Combine(targetDir, $".{fileName}.tmp");
 
             if (provider.StreamsToStdout)
             {
-                await ExecuteStreamingBackup(command, filePath, target.Compression, cancellationToken);
+                await ExecuteStreamingBackup(command, tempFilePath, target.Compression, cancellationToken);
             }
             else
             {
-                await ExecuteFileBasedBackup(command, provider, target, filePath, cancellationToken);
+                await ExecuteFileBasedBackup(command, provider, target, backupId, tempFilePath, cancellationToken);
             }
 
-            var fileInfo = new FileInfo(filePath);
+            File.Move(tempFilePath, finalFilePath);
+            finalMoved = true;
+            tempFilePath = null;
+
+            var fileInfo = new FileInfo(finalFilePath);
+            var sha256 = await BackupIntegrity.ComputeSha256Async(finalFilePath, cancellationToken);
             stopwatch.Stop();
+
+            var manifest = new BackupManifest
+            {
+                TargetName = target.Name,
+                DatabaseType = target.Type,
+                Database = target.Database,
+                Container = target.Container,
+                BackupFileName = fileName,
+                FileSizeBytes = fileInfo.Length,
+                Sha256 = sha256,
+                Compression = target.Compression,
+                Format = target.Format,
+                StartedAt = startTime,
+                CompletedAt = DateTime.UtcNow,
+                DurationMs = (long)stopwatch.Elapsed.TotalMilliseconds,
+                LutraVersion = GetVersion(),
+                Success = true
+            };
+
+            await BackupIntegrity.WriteChecksumFileAsync(finalFilePath, sha256, cancellationToken);
+            await BackupIntegrity.WriteManifestAsync(finalFilePath, manifest, cancellationToken);
 
             var record = new BackupRecord
             {
@@ -59,12 +95,22 @@ public class BackupOrchestrator
                 Timestamp = startTime,
                 FileName = fileName,
                 FileSizeBytes = fileInfo.Length,
+                Sha256 = sha256,
+                ManifestFileName = Path.GetFileName(BackupIntegrity.GetManifestPath(finalFilePath)),
                 DurationMs = (long)stopwatch.Elapsed.TotalMilliseconds,
                 Success = true
             };
             await _historyService.AddRecordAsync(record, cancellationToken);
+            artifactRecorded = true;
 
-            await ApplyRetentionAsync(target, cancellationToken);
+            try
+            {
+                await ApplyRetentionAsync(target, dryRun: false, cancellationToken);
+            }
+            catch
+            {
+                // A retention failure should not turn a completed, recorded backup into a failed backup.
+            }
 
             return new BackupResult
             {
@@ -72,13 +118,22 @@ public class BackupOrchestrator
                 Success = true,
                 Timestamp = startTime,
                 Duration = stopwatch.Elapsed,
-                FilePath = filePath,
-                FileSizeBytes = fileInfo.Length
+                FilePath = finalFilePath,
+                FileSizeBytes = fileInfo.Length,
+                Sha256 = sha256
             };
         }
         catch (Exception ex)
         {
             stopwatch.Stop();
+            DeleteIfExists(tempFilePath);
+
+            if (finalMoved && !artifactRecorded && finalFilePath is not null && fileName is not null)
+            {
+                DeleteIfExists(finalFilePath);
+                DeleteIfExists(BackupIntegrity.GetChecksumPath(finalFilePath));
+                DeleteIfExists(BackupIntegrity.GetManifestPath(finalFilePath));
+            }
 
             var failureRecord = new BackupRecord
             {
@@ -117,7 +172,14 @@ public class BackupOrchestrator
 
     public async Task<int> CleanupAsync(DatabaseTarget target, CancellationToken cancellationToken = default)
     {
-        return await ApplyRetentionAsync(target, cancellationToken);
+        return await ApplyRetentionAsync(target, dryRun: false, cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<BackupCleanupCandidate>> PreviewCleanupAsync(
+        DatabaseTarget target,
+        CancellationToken cancellationToken = default)
+    {
+        return await GetRetentionCandidatesAsync(target, cancellationToken);
     }
 
     private async Task ExecuteStreamingBackup(
@@ -133,7 +195,7 @@ public class BackupOrchestrator
 
     private async Task ExecuteFileBasedBackup(
         DockerExecCommand command, IBackupProvider provider, DatabaseTarget target,
-        string filePath, CancellationToken cancellationToken)
+        string backupId, string filePath, CancellationToken cancellationToken)
     {
         // Step 1: Run the dump command (writes to a file inside the container)
         using var dumpResult = await _processExecutor.ExecuteAsync(command, cancellationToken);
@@ -141,7 +203,7 @@ public class BackupOrchestrator
         if (!dumpResult.IsSuccess)
             throw new InvalidOperationException($"Backup command failed (exit code {dumpResult.ExitCode}): {dumpResult.StandardError}");
 
-        var containerPath = provider.GetContainerBackupPath(target)
+        var containerPath = provider.GetContainerBackupPath(target, backupId)
             ?? throw new InvalidOperationException("Provider does not stream to stdout but returned no container backup path.");
 
         try
@@ -190,7 +252,29 @@ public class BackupOrchestrator
         }
     }
 
-    private async Task<int> ApplyRetentionAsync(DatabaseTarget target, CancellationToken cancellationToken)
+    private async Task<int> ApplyRetentionAsync(DatabaseTarget target, bool dryRun, CancellationToken cancellationToken)
+    {
+        var candidates = await GetRetentionCandidatesAsync(target, cancellationToken);
+        var deletedCount = 0;
+
+        foreach (var candidate in candidates)
+        {
+            if (!dryRun)
+            {
+                foreach (var filePath in candidate.PathsToDelete)
+                    DeleteIfExists(filePath);
+
+                await _historyService.RemoveRecordAsync(target.Name, candidate.Record.FileName, cancellationToken);
+            }
+            deletedCount++;
+        }
+
+        return deletedCount;
+    }
+
+    private async Task<IReadOnlyList<BackupCleanupCandidate>> GetRetentionCandidatesAsync(
+        DatabaseTarget target,
+        CancellationToken cancellationToken)
     {
         var retention = target.Retention ?? _config.Retention;
         var records = await _historyService.GetRecordsByTargetAsync(target.Name, cancellationToken);
@@ -201,37 +285,88 @@ public class BackupOrchestrator
             .ToList();
 
         if (successRecords.Count <= retention.MaxCount)
-            return 0;
+            return [];
 
         var cutoffDate = DateTime.UtcNow.AddDays(-retention.MaxAgeDays);
-        var deletedCount = 0;
 
-        // Delete only when BOTH conditions are met: exceeds max_count AND older than max_age_days
-        var candidates = successRecords
+        return successRecords
             .Skip(retention.MaxCount)
-            .Where(r => r.Timestamp < cutoffDate);
+            .Where(r => r.Timestamp < cutoffDate)
+            .Select(record =>
+            {
+                var backupPath = Path.Combine(_config.BackupDirectory, target.Name, record.FileName);
+                string[] paths =
+                [
+                    backupPath,
+                    BackupIntegrity.GetChecksumPath(backupPath),
+                    BackupIntegrity.GetManifestPath(backupPath)
+                ];
 
-        foreach (var record in candidates)
-        {
-            var filePath = Path.Combine(_config.BackupDirectory, target.Name, record.FileName);
-
-            if (File.Exists(filePath))
-                File.Delete(filePath);
-
-            await _historyService.RemoveRecordAsync(target.Name, record.FileName, cancellationToken);
-            deletedCount++;
-        }
-
-        return deletedCount;
+                return new BackupCleanupCandidate(record, paths);
+            })
+            .ToList();
     }
 
-    private static string BuildFileName(string targetName, DateTime timestamp, string extension, CompressionType compression)
+    private FileStream AcquireTargetLock(DatabaseTarget target)
     {
-        var name = $"{targetName}_{timestamp:yyyy-MM-dd}_{timestamp:HHmmss}{extension}";
+        var lockDir = Path.Combine(_config.BackupDirectory, ".locks");
+        Directory.CreateDirectory(lockDir);
+
+        var lockPath = Path.Combine(lockDir, SanitizeFileComponent(target.Name) + ".lock");
+        try
+        {
+            var stream = new FileStream(lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.ReadWrite);
+            LockFile(stream);
+            return stream;
+        }
+        catch (IOException ex)
+        {
+            throw new InvalidOperationException(
+                $"Backup for target '{target.Name}' is already running.", ex);
+        }
+    }
+
+    private static string BuildFileName(
+        string targetName,
+        DateTime timestamp,
+        string backupId,
+        string extension,
+        CompressionType compression)
+    {
+        var name = $"{targetName}_{timestamp:yyyy-MM-dd}_{timestamp:HHmmss}_{backupId}{extension}";
 
         if (compression == CompressionType.Gzip)
             name += ".gz";
 
         return name;
     }
+
+    private static string SanitizeFileComponent(string value)
+    {
+        return new string(value.Select(c =>
+            char.IsLetterOrDigit(c) || c is '-' or '_' or '.' ? c : '_').ToArray());
+    }
+
+    private static void DeleteIfExists(string? path)
+    {
+        if (path is not null && File.Exists(path))
+            File.Delete(path);
+    }
+
+    private static string GetVersion()
+    {
+        return typeof(BackupOrchestrator).Assembly
+            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?
+            .InformationalVersion
+            ?? typeof(BackupOrchestrator).Assembly.GetName().Version?.ToString()
+            ?? "unknown";
+    }
+
+    private static void LockFile(FileStream stream)
+    {
+        if (!OperatingSystem.IsMacOS())
+            stream.Lock(0, 0);
+    }
 }
+
+public sealed record BackupCleanupCandidate(BackupRecord Record, IReadOnlyList<string> PathsToDelete);

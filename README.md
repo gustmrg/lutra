@@ -148,6 +148,7 @@ sudo lutra schedule install
 lutra backup run                             # Back up all configured databases
 lutra backup run --target my-postgres        # Back up a specific database
 lutra backup list                            # List configured databases and schedules
+lutra backup verify-file --file <PATH>       # Verify a backup file checksum and manifest
 
 # History
 lutra history                                # Show backup history for all targets
@@ -156,10 +157,15 @@ lutra history --target my-postgres           # Show history for specific target
 # Maintenance
 lutra cleanup                                # Remove old backups per retention policy
 lutra cleanup --target my-postgres           # Clean up specific target
+lutra cleanup --dry-run                      # Preview what would be deleted
+lutra health                                 # Analyze backup health and detect anomalies
+lutra health --target my-postgres            # Analyze health for a specific target
 
 # Configuration
 lutra config init                            # Create config directories and template files
 lutra config validate                        # Validate config file
+lutra config validate --preflight            # Also check systemd, Docker, containers, and dump tools
+lutra config generate                        # Generate config from docker-compose.yml
 lutra config reset                           # Reset config files to template defaults
 
 # Scheduling (systemd timers)
@@ -177,7 +183,8 @@ sudo lutra uninstall                         # Remove all Lutra artifacts (confi
 
 ```bash
 lutra restore                                # Interactive restore (select DB → backup)
-lutra cleanup --dry-run                      # Preview what would be deleted
+lutra verify                                 # Non-destructive restore verification
+lutra sync                                   # Optional Raspberry Pi / rsync workflow
 ```
 
 ### Global Options
@@ -286,7 +293,9 @@ Lutra runs **on the VPS** alongside your containers. It does not connect to data
 /var/backups/lutra/
 ├── backup-history.json
 ├── example-db/
-│   ├── example-db_2026-02-08_030000.dump.gz
+│   ├── example-db_2026-02-08_030000_a1b2c3d4e5f6.dump.gz
+│   ├── example-db_2026-02-08_030000_a1b2c3d4e5f6.dump.gz.sha256
+│   ├── example-db_2026-02-08_030000_a1b2c3d4e5f6.dump.gz.json
 │   ├── example-db_2026-02-07_030000.dump.gz
 │   └── example-db_2026-02-06_030000.dump.gz
 ├── finance-db/
@@ -303,6 +312,12 @@ Backups are deleted only when **both** conditions are met (conservative approach
 - The backup age exceeds `max_age_days`
 
 Per-database retention settings override global defaults.
+
+Successful backups also write integrity sidecars:
+- `.sha256` stores the SHA-256 checksum for the backup file
+- `.json` stores a manifest with target metadata, size, checksum, duration, format, compression, and Lutra version
+
+Use `lutra backup verify-file --file <PATH>` to verify a backup against its checksum and manifest sidecars.
 
 ## Project Structure
 

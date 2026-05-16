@@ -6,7 +6,7 @@ public class PostgresBackupProvider : IBackupProvider
 {
     public DatabaseType Type => DatabaseType.PostgreSql;
 
-    public DockerExecCommand BuildDumpCommand(DatabaseTarget target)
+    public DockerExecCommand BuildDumpCommand(DatabaseTarget target, string backupId)
     {
         var args = new List<string>();
 

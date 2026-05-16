@@ -1,3 +1,5 @@
+using Lutra.Core.Health;
+
 namespace Lutra.Core.Configuration;
 
 /// <summary>
@@ -31,4 +33,6 @@ public class BackupConfig
     /// Gets the list of database targets to back up.
     /// </summary>
     public required List<DatabaseTarget> Databases { get; init; }
+
+    public HealthConfig? Health { get; init; }
 }
