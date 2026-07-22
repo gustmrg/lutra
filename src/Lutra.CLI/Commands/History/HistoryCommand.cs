@@ -35,6 +35,7 @@ public sealed class HistoryCommand : AsyncCommand<TargetSettings>
             var table = new Table();
             table.AddColumn("Target");
             table.AddColumn("Timestamp");
+            table.AddColumn("Type");
             table.AddColumn("File");
             table.AddColumn("Size");
             table.AddColumn("Duration");
@@ -52,6 +53,7 @@ public sealed class HistoryCommand : AsyncCommand<TargetSettings>
                 table.AddRow(
                     record.TargetName.EscapeMarkup(),
                     record.Timestamp.ToString("yyyy-MM-dd HH:mm:ss"),
+                    record.RecordType ?? "backup",
                     record.FileName.EscapeMarkup(),
                     size,
                     duration,

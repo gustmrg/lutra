@@ -38,7 +38,7 @@ public class BackupOrchestrator
 
         try
         {
-            await using var targetLock = AcquireTargetLock(target);
+            await using var targetLock = TargetLock.Acquire(_config.BackupDirectory, target.Name, "Backup");
 
             if (!_providers.TryGetValue(target.Type, out var provider))
                 throw new NotSupportedException($"No backup provider registered for database type '{target.Type}'.");
@@ -280,7 +280,7 @@ public class BackupOrchestrator
         var records = await _historyService.GetRecordsByTargetAsync(target.Name, cancellationToken);
 
         var successRecords = records
-            .Where(r => r.Success)
+            .Where(r => r.Success && r.RecordType is null)
             .OrderByDescending(r => r.Timestamp)
             .ToList();
 
@@ -307,25 +307,6 @@ public class BackupOrchestrator
             .ToList();
     }
 
-    private FileStream AcquireTargetLock(DatabaseTarget target)
-    {
-        var lockDir = Path.Combine(_config.BackupDirectory, ".locks");
-        Directory.CreateDirectory(lockDir);
-
-        var lockPath = Path.Combine(lockDir, SanitizeFileComponent(target.Name) + ".lock");
-        try
-        {
-            var stream = new FileStream(lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.ReadWrite);
-            LockFile(stream);
-            return stream;
-        }
-        catch (IOException ex)
-        {
-            throw new InvalidOperationException(
-                $"Backup for target '{target.Name}' is already running.", ex);
-        }
-    }
-
     private static string BuildFileName(
         string targetName,
         DateTime timestamp,
@@ -341,12 +322,6 @@ public class BackupOrchestrator
         return name;
     }
 
-    private static string SanitizeFileComponent(string value)
-    {
-        return new string(value.Select(c =>
-            char.IsLetterOrDigit(c) || c is '-' or '_' or '.' ? c : '_').ToArray());
-    }
-
     private static void DeleteIfExists(string? path)
     {
         if (path is not null && File.Exists(path))
@@ -360,12 +335,6 @@ public class BackupOrchestrator
             .InformationalVersion
             ?? typeof(BackupOrchestrator).Assembly.GetName().Version?.ToString()
             ?? "unknown";
-    }
-
-    private static void LockFile(FileStream stream)
-    {
-        if (!OperatingSystem.IsMacOS())
-            stream.Lock(0, 0);
     }
 }
 

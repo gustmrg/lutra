@@ -4,6 +4,7 @@ using Lutra.Core.Backup;
 using Lutra.Core.Configuration;
 using Lutra.Core.Health;
 using Lutra.Core.History;
+using Lutra.Core.Restore;
 
 namespace Lutra.CLI.Infrastructure;
 
@@ -30,6 +31,19 @@ internal static class ServiceFactory
             new MongoBackupProvider()
         ];
         return new BackupOrchestrator(providers, processExecutor, historyService, config);
+    }
+
+    public static RestoreOrchestrator CreateRestoreOrchestrator(BackupConfig config)
+    {
+        var historyService = new BackupHistoryService(config.BackupDirectory);
+        var processExecutor = new DockerProcessExecutor();
+        IRestoreProvider[] providers =
+        [
+            new PostgresRestoreProvider(),
+            new SqlServerRestoreProvider(),
+            new MongoRestoreProvider()
+        ];
+        return new RestoreOrchestrator(providers, processExecutor, historyService, config);
     }
 
     public static BackupHistoryService CreateHistoryService(BackupConfig config)

@@ -33,4 +33,13 @@ public class BackupRecord
     [JsonPropertyName("error_message")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? ErrorMessage { get; init; }
+
+    /// <summary>
+    /// Gets the kind of record. <see langword="null"/> indicates a backup record
+    /// (the default for records written before this field existed);
+    /// <c>"verify"</c> indicates a test-restore verification record.
+    /// </summary>
+    [JsonPropertyName("record_type")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? RecordType { get; init; }
 }

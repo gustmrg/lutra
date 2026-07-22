@@ -3,8 +3,10 @@ using Lutra.CLI.Commands.Cleanup;
 using Lutra.CLI.Commands.Config;
 using Lutra.CLI.Commands.Health;
 using Lutra.CLI.Commands.History;
+using Lutra.CLI.Commands.Restore;
 using Lutra.CLI.Commands.Schedule;
 using Lutra.CLI.Commands.Uninstall;
+using Lutra.CLI.Commands.Verify;
 using System.Reflection;
 using Spectre.Console.Cli;
 
@@ -33,6 +35,12 @@ app.Configure(config =>
 
     config.AddCommand<HistoryCommand>("history")
         .WithDescription("Show backup history.");
+
+    config.AddCommand<RestoreCommand>("restore")
+        .WithDescription("Restore a backup into its database (destructive).");
+
+    config.AddCommand<VerifyCommand>("verify")
+        .WithDescription("Verify a backup by test-restoring it into a temporary database.");
 
     config.AddCommand<CleanupCommand>("cleanup")
         .WithDescription("Run retention cleanup to remove old backups.");

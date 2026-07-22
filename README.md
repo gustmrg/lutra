@@ -41,7 +41,7 @@ It uses `docker exec` to run native dump tools (`pg_dump`, `mongodump`, `sqlcmd`
 
 ## Quick Start
 
-> **Note**: Lutra is in early development. Core backup functionality is implemented, but some features (like `restore` command) are still planned.
+> **Note**: Lutra is in early development. Core backup, restore, and restore verification functionality is implemented.
 
 ### Download Pre-built Binary
 
@@ -150,6 +150,12 @@ lutra backup run --target my-postgres        # Back up a specific database
 lutra backup list                            # List configured databases and schedules
 lutra backup verify-file --file <PATH>       # Verify a backup file checksum and manifest
 
+# Restore
+lutra restore                                # Interactive restore (select DB → backup)
+lutra restore --target my-postgres --file <PATH> --force  # Non-interactive restore
+lutra verify                                 # Test-restore the latest backup of a DB
+lutra verify --target my-postgres --file <PATH>           # Test-restore a specific backup
+
 # History
 lutra history                                # Show backup history for all targets
 lutra history --target my-postgres           # Show history for specific target
@@ -182,8 +188,6 @@ sudo lutra uninstall                         # Remove all Lutra artifacts (confi
 ### Planned Features
 
 ```bash
-lutra restore                                # Interactive restore (select DB → backup)
-lutra verify                                 # Non-destructive restore verification
 lutra sync                                   # Optional Raspberry Pi / rsync workflow
 ```
 
@@ -319,6 +323,40 @@ Successful backups also write integrity sidecars:
 
 Use `lutra backup verify-file --file <PATH>` to verify a backup against its checksum and manifest sidecars.
 
+## Restoring and Verifying Backups
+
+### `lutra restore` (destructive)
+
+Restores a backup into the configured database, **replacing its current contents**. Requires an interactive confirmation unless `--force` is passed. Omitting `--target` and/or `--file` opens interactive selection prompts.
+
+```bash
+lutra restore --target my-postgres --file /var/backups/lutra/my-postgres/my-postgres_2026-02-08_030000_a1b2c3d4e5f6.dump.gz
+```
+
+Behavior per database:
+
+| Database   | Restore mechanism                                                                 |
+|------------|-----------------------------------------------------------------------------------|
+| PostgreSQL | Custom format: `pg_restore --clean --if-exists`. Plain format: the database is dropped and recreated, then loaded with `psql`. |
+| SQL Server | The `.bak` is streamed into the container, then `RESTORE DATABASE ... WITH REPLACE, RECOVERY`. |
+| MongoDB    | `mongorestore --archive --drop`.                                                   |
+
+### `lutra verify` (non-destructive)
+
+Proves a backup is restorable without touching the production database. It checks the checksum sidecar, restores into a temporary database, runs a minimal validation query (counting tables/collections), and drops the temporary database afterwards. Results are recorded in `lutra history` as `verify` records.
+
+```bash
+lutra verify --target my-postgres            # Verifies the latest successful backup
+```
+
+Per database specifics:
+
+- **PostgreSQL**: restores into a temporary `lutra_verify_<id>` database.
+- **SQL Server**: reads `RESTORE FILELISTONLY` to build `MOVE` clauses for the temporary database name.
+- **MongoDB**: remaps namespaces with `--nsFrom`/`--nsTo` into a temporary database. Uses `mongosh` when available, falling back to the legacy `mongo` shell in older images.
+
+`verify` exits with code `0` on success and `1` on failure, so it can run from cron/systemd as a scheduled restore drill.
+
 ## Project Structure
 
 ```
@@ -332,6 +370,10 @@ Lutra/
 │   │   │   │   └── BackupListCommand.cs    # List configured databases
 │   │   │   ├── History/
 │   │   │   │   └── HistoryCommand.cs       # Show backup history
+│   │   │   ├── Restore/
+│   │   │   │   └── RestoreCommand.cs       # Destructive restore into the configured database
+│   │   │   ├── Verify/
+│   │   │   │   └── VerifyCommand.cs        # Non-destructive test-restore verification
 │   │   │   ├── Cleanup/
 │   │   │   │   └── CleanupCommand.cs       # Trigger retention cleanup
 │   │   │   ├── Config/
@@ -373,6 +415,12 @@ Lutra/
 │       │   ├── BackupResult.cs             # Result of a backup operation
 │       │   ├── IProcessExecutor.cs         # Process execution interface
 │       │   └── DockerProcessExecutor.cs    # Docker exec implementation
+│       ├── Restore/
+│       │   ├── IRestoreProvider.cs         # Interface for DB-specific restore logic
+│       │   ├── PostgresRestoreProvider.cs  # PostgreSQL pg_restore/psql restore
+│       │   ├── SqlServerRestoreProvider.cs # SQL Server .bak restore (+ FILELISTONLY/MOVE)
+│       │   ├── MongoRestoreProvider.cs     # MongoDB mongorestore (namespace remap for tests)
+│       │   └── RestoreOrchestrator.cs      # Coordinates restore and test-restore workflows
 │       ├── History/
 │       │   ├── IBackupHistoryService.cs    # History service interface
 │       │   ├── BackupHistoryService.cs     # Tracks backup metadata (JSON)

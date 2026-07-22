@@ -25,7 +25,8 @@ public sealed class HealthCommand : AsyncCommand<HealthSettings>
             foreach (var target in targets)
             {
                 var records = await historyService.GetRecordsByTargetAsync(target.Name);
-                reports.Add(detector.Analyze(records, target));
+                var backupRecords = records.Where(r => r.RecordType is null).ToList();
+                reports.Add(detector.Analyze(backupRecords, target));
             }
 
             RenderReports(reports);

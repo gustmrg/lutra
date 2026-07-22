@@ -56,4 +56,71 @@ public class DockerProcessExecutor : IProcessExecutor
 
         return new ProcessResult(exitCode, outputStream, stderr);
     }
+
+    public async Task<ProcessResult> ExecuteWithInputAsync(DockerExecCommand command, Stream input, CancellationToken cancellationToken = default)
+    {
+        var psi = new ProcessStartInfo
+        {
+            FileName = "docker",
+            RedirectStandardInput = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+
+        psi.ArgumentList.Add("exec");
+        psi.ArgumentList.Add("-i");
+
+        if (command.EnvironmentVariables is not null)
+        {
+            foreach (var (key, value) in command.EnvironmentVariables)
+            {
+                psi.ArgumentList.Add("-e");
+                psi.ArgumentList.Add($"{key}={value}");
+            }
+        }
+
+        psi.ArgumentList.Add(command.ContainerName);
+        psi.ArgumentList.Add(command.Command);
+
+        foreach (var arg in command.Arguments)
+            psi.ArgumentList.Add(arg);
+
+        var process = Process.Start(psi)
+            ?? throw new InvalidOperationException("Failed to start docker process.");
+
+        var tempFile = Path.GetTempFileName();
+        string stderr;
+        int exitCode;
+
+        // Write phase - must complete and dispose before reading
+        await using (var tempStream = new FileStream(tempFile, FileMode.Create, FileAccess.Write, FileShare.None, 81920, useAsync: true))
+        {
+            var stderrTask = process.StandardError.ReadToEndAsync(cancellationToken);
+            var stdoutTask = process.StandardOutput.BaseStream.CopyToAsync(tempStream, cancellationToken);
+
+            try
+            {
+                await input.CopyToAsync(process.StandardInput.BaseStream, cancellationToken);
+                process.StandardInput.Close();
+            }
+            catch (IOException)
+            {
+                // The command may exit before consuming all input (e.g. authentication
+                // failure). The exit code and stderr capture below report the failure.
+            }
+
+            await process.WaitForExitAsync(cancellationToken);
+            await Task.WhenAll(stdoutTask, stderrTask);
+
+            stderr = await stderrTask;
+            exitCode = process.ExitCode;
+        }
+
+        // Read phase - write stream is now disposed, safe to open for reading
+        var outputStream = new FileStream(tempFile, FileMode.Open, FileAccess.Read, FileShare.Read, 81920, FileOptions.DeleteOnClose | FileOptions.Asynchronous);
+
+        return new ProcessResult(exitCode, outputStream, stderr);
+    }
 }

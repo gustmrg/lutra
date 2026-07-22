@@ -25,6 +25,29 @@ public interface IProcessExecutor
     /// Thrown when the Docker process fails to start.
     /// </exception>
     Task<ProcessResult> ExecuteAsync(DockerExecCommand command, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Executes a command inside a Docker container, streaming the given input to the
+    /// process standard input, and captures the output.
+    /// </summary>
+    /// <remarks>
+    /// Used by restore workflows to pipe backup data into commands such as
+    /// <c>pg_restore</c>, <c>psql</c>, or <c>mongorestore</c> via <c>docker exec -i</c>.
+    /// </remarks>
+    /// <param name="command">
+    /// The Docker exec command specification including container name, executable, arguments,
+    /// and optional environment variables.
+    /// </param>
+    /// <param name="input">A readable stream whose contents are written to the process standard input.</param>
+    /// <param name="cancellationToken">Token to cancel the operation.</param>
+    /// <returns>
+    /// A <see cref="ProcessResult"/> containing the exit code, standard output stream,
+    /// and captured standard error text.
+    /// </returns>
+    /// <exception cref="InvalidOperationException">
+    /// Thrown when the Docker process fails to start.
+    /// </exception>
+    Task<ProcessResult> ExecuteWithInputAsync(DockerExecCommand command, Stream input, CancellationToken cancellationToken = default);
 }
 
 /// <summary>
