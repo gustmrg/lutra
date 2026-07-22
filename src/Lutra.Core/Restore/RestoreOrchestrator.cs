@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.IO.Compression;
 using Lutra.Core.Backup;
 using Lutra.Core.Configuration;
+using Lutra.Core.Files;
 using Lutra.Core.History;
 
 namespace Lutra.Core.Restore;
@@ -167,6 +168,109 @@ public class RestoreOrchestrator
         }
     }
 
+    /// <summary>
+    /// Extracts a file-target archive into <paramref name="destinationDirectory"/>.
+    /// Pass <c>/</c> to restore files to their original locations; existing files
+    /// with the same paths are overwritten. Callers are responsible for obtaining
+    /// user confirmation beforehand.
+    /// </summary>
+    public async Task<RestoreResult> RestoreFilesAsync(
+        FileTarget target,
+        string archiveFilePath,
+        string destinationDirectory,
+        CancellationToken cancellationToken = default)
+    {
+        var stopwatch = Stopwatch.StartNew();
+
+        try
+        {
+            if (!File.Exists(archiveFilePath))
+                throw new FileNotFoundException($"Backup file not found: {archiveFilePath}");
+
+            await using var targetLock = TargetLock.Acquire(_config.BackupDirectory, target.Name, "Restore");
+
+            await FileArchive.ExtractAsync(archiveFilePath, destinationDirectory, cancellationToken);
+
+            stopwatch.Stop();
+            return new RestoreResult
+            {
+                TargetName = target.Name,
+                Success = true,
+                Duration = stopwatch.Elapsed,
+                DestinationDatabase = destinationDirectory
+            };
+        }
+        catch (Exception ex)
+        {
+            stopwatch.Stop();
+            return new RestoreResult
+            {
+                TargetName = target.Name,
+                Success = false,
+                Duration = stopwatch.Elapsed,
+                DestinationDatabase = destinationDirectory,
+                ErrorMessage = ex.Message
+            };
+        }
+    }
+
+    /// <summary>
+    /// Verifies a file-target archive by checking its checksum sidecar and reading
+    /// through the archive to validate integrity. The result is recorded in backup
+    /// history as a <c>"verify"</c> record.
+    /// </summary>
+    public async Task<VerifyResult> VerifyFilesAsync(
+        FileTarget target,
+        string archiveFilePath,
+        CancellationToken cancellationToken = default)
+    {
+        var stopwatch = Stopwatch.StartNew();
+        var checksumValid = false;
+
+        try
+        {
+            if (!File.Exists(archiveFilePath))
+                throw new FileNotFoundException($"Backup file not found: {archiveFilePath}");
+
+            var integrity = await BackupIntegrity.VerifyFileAsync(archiveFilePath, cancellationToken);
+            if (!integrity.Success)
+                throw new InvalidOperationException($"Integrity check failed: {integrity.Message}");
+            checksumValid = true;
+
+            await using var targetLock = TargetLock.Acquire(_config.BackupDirectory, target.Name, "Verify");
+
+            var entryCount = await FileArchive.CountEntriesAsync(archiveFilePath, cancellationToken);
+
+            stopwatch.Stop();
+            var successResult = new VerifyResult
+            {
+                TargetName = target.Name,
+                BackupFilePath = archiveFilePath,
+                ChecksumValid = checksumValid,
+                Success = true,
+                Duration = stopwatch.Elapsed,
+                ValidationDetails = $"Archive is readable and contains {entryCount} entries."
+            };
+            await RecordVerificationAsync(target, archiveFilePath, successResult, cancellationToken);
+            return successResult;
+        }
+        catch (Exception ex)
+        {
+            stopwatch.Stop();
+            var failureResult = new VerifyResult
+            {
+                TargetName = target.Name,
+                BackupFilePath = archiveFilePath,
+                ChecksumValid = checksumValid,
+                Success = false,
+                Duration = stopwatch.Elapsed,
+                ErrorMessage = ex.Message
+            };
+            await RecordVerificationAsync(target, archiveFilePath, failureResult, cancellationToken);
+            return failureResult;
+        }
+    }
+
     private IRestoreProvider GetProvider(DatabaseType type)
     {
         if (!_providers.TryGetValue(type, out var provider))
@@ -284,7 +388,7 @@ public class RestoreOrchestrator
     }
 
     private async Task RecordVerificationAsync(
-        DatabaseTarget target,
+        IBackupTarget target,
         string backupFilePath,
         VerifyResult result,
         CancellationToken cancellationToken)

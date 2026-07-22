@@ -80,8 +80,8 @@ public class YamlConfigLoader : IConfigLoader
 
         ValidateRetention("retention", config.Retention);
 
-        if (config.Databases is not { Count: > 0 })
-            throw new ConfigurationException("At least one database target must be configured under 'databases'.");
+        if (config.Databases.Count == 0 && config.Files.Count == 0)
+            throw new ConfigurationException("At least one target must be configured under 'databases' or 'files'.");
 
         var targetNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
@@ -133,6 +133,31 @@ public class YamlConfigLoader : IConfigLoader
                 default:
                     throw new ConfigurationException($"{prefix} ({db.Name}): unsupported database type '{db.Type}'.");
             }
+        }
+
+        for (var i = 0; i < config.Files.Count; i++)
+        {
+            var ft = config.Files[i];
+            var prefix = $"files[{i}]";
+
+            if (string.IsNullOrWhiteSpace(ft.Name))
+                throw new ConfigurationException($"{prefix}: 'name' is required.");
+            if (!IsSafeName(ft.Name))
+                throw new ConfigurationException($"{prefix} ({ft.Name}): 'name' cannot contain path separators.");
+            if (!targetNames.Add(ft.Name))
+                throw new ConfigurationException($"{prefix} ({ft.Name}): duplicate target name.");
+            if (ft.Paths.Count == 0)
+                throw new ConfigurationException($"{prefix} ({ft.Name}): 'paths' must contain at least one entry.");
+            if (ft.Paths.Any(string.IsNullOrWhiteSpace))
+                throw new ConfigurationException($"{prefix} ({ft.Name}): 'paths' cannot contain empty entries.");
+            if (string.IsNullOrWhiteSpace(ft.Schedule))
+                throw new ConfigurationException($"{prefix} ({ft.Name}): 'schedule' is required.");
+            if (LooksLikeCronExpression(ft.Schedule))
+                throw new ConfigurationException(
+                    $"{prefix} ({ft.Name}): 'schedule' looks like cron syntax. Use a systemd calendar expression such as \"*-*-* 03:00:00\".");
+
+            if (ft.Retention is not null)
+                ValidateRetention($"{prefix} ({ft.Name}).retention", ft.Retention);
         }
     }
 

@@ -12,7 +12,7 @@ public class AnomalyDetector
         _config = config;
     }
 
-    public HealthReport Analyze(IReadOnlyList<BackupRecord> records, DatabaseTarget target)
+    public HealthReport Analyze(IReadOnlyList<BackupRecord> records, IBackupTarget target)
     {
         var findings = new List<HealthFinding>();
 

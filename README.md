@@ -1,10 +1,10 @@
 # 🦦 Lutra
 
-**Automated database backups for Docker containers.**
+**Automated database and configuration backups for a Docker-based VPS.**
 
-Lutra is a CLI tool that automates database backups for containerized databases running on a Linux VPS. Built with C# (.NET 10.0) and [Spectre.Console](https://spectreconsole.net/), it ships as a single self-contained binary — no runtime dependencies required.
+Lutra is a CLI tool that automates backups for containerized databases and configuration files running on a Linux VPS. Built with C# (.NET 10.0) and [Spectre.Console](https://spectreconsole.net/), it ships as a single self-contained binary — no runtime dependencies required.
 
-It uses `docker exec` to run native dump tools (`pg_dump`, `mongodump`, `sqlcmd`) inside your containers, streams the output with optional gzip compression, and manages retention automatically. Scheduling is handled by systemd timers, not a custom daemon.
+It uses `docker exec` to run native dump tools (`pg_dump`, `mongodump`, `sqlcmd`) inside your containers, and archives file targets (compose files, `.env` files, reverse proxy configs) into tar archives — all with optional gzip compression, checksums, manifests, and automatic retention. Scheduling is handled by systemd timers, not a custom daemon.
 
 ## Table of Contents
 
@@ -19,6 +19,7 @@ It uses `docker exec` to run native dump tools (`pg_dump`, `mongodump`, `sqlcmd`
 - [Configuration Reference](#configuration-reference)
   - [Global Settings](#global-settings)
   - [Database Target Settings](#database-target-settings)
+  - [File Target Settings](#file-target-settings)
   - [Full Example](#full-example)
 - [How It Works](#how-it-works)
   - [Backup File Structure](#backup-file-structure)
@@ -225,6 +226,38 @@ Most commands support these options:
 | `compression`  | enum      | `gzip`         | `gzip` or `none`                               |
 | `retention`    | object    | global default | Override global retention for this target       |
 
+### File Target Settings
+
+File targets back up configuration files as tar archives. Use them for compose files, `.env` files, reverse proxy configs, and certificates. **Do not** use them for system state (installed packages, users, firewall rules) — recreate that during a rebuild instead of backing it up.
+
+Defined under the top-level `files:` key (can be combined with, or replace, `databases:`):
+
+| Property      | Type       | Default            | Description                                           |
+|---------------|-----------|--------------------|-------------------------------------------------------|
+| `name`        | string    | —                  | Friendly name (used in filenames and commands)        |
+| `paths`       | list      | —                  | Files and/or directories to archive (dirs recursively) |
+| `exclude`     | list      | —                  | Optional glob patterns (`*`, `?`); also matches any single path segment |
+| `schedule`    | string    | `"*-*-* 03:00:00"` | Systemd calendar expression for timer generation      |
+| `compression` | enum      | `gzip`             | `gzip` (`.tar.gz`) or `none` (`.tar`)                 |
+| `retention`   | object    | global default     | Override global retention for this target             |
+
+Paths are stored in the archive relative to the filesystem root, so `lutra restore` extracts them back to their original locations by default (or elsewhere with `--destination`).
+
+```yaml
+files:
+  - name: app-config
+    paths:
+      - /opt/myapp
+      - /etc/nginx
+    exclude:
+      - "*.log"
+      - node_modules
+    schedule: "*-*-* 03:30:00"
+    compression: gzip
+```
+
+> **Secrets**: file targets often include `.env` files and private keys. `lutra config validate` warns when configured paths look sensitive. Backups are stored unencrypted — restrict access to the backup directory (encryption support is planned).
+
 ### Full Example
 
 ```yaml
@@ -341,6 +374,13 @@ Behavior per database:
 | SQL Server | The `.bak` is streamed into the container, then `RESTORE DATABASE ... WITH REPLACE, RECOVERY`. |
 | MongoDB    | `mongorestore --archive --drop`.                                                   |
 
+For **file targets**, restore extracts the tar archive back to the original locations (or to an alternate directory with `--destination`), overwriting files with the same paths:
+
+```bash
+lutra restore --target app-config --file app-config_2026-02-08_033000_a1b2c3d4e5f6.tar.gz   # extracts to /
+lutra restore --target app-config --destination /tmp/inspect --force                        # extracts elsewhere
+```
+
 ### `lutra verify` (non-destructive)
 
 Proves a backup is restorable without touching the production database. It checks the checksum sidecar, restores into a temporary database, runs a minimal validation query (counting tables/collections), and drops the temporary database afterwards. Results are recorded in `lutra history` as `verify` records.
@@ -354,6 +394,7 @@ Per database specifics:
 - **PostgreSQL**: restores into a temporary `lutra_verify_<id>` database.
 - **SQL Server**: reads `RESTORE FILELISTONLY` to build `MOVE` clauses for the temporary database name.
 - **MongoDB**: remaps namespaces with `--nsFrom`/`--nsTo` into a temporary database. Uses `mongosh` when available, falling back to the legacy `mongo` shell in older images.
+- **File targets**: reads through the archive to validate its integrity and counts the entries.
 
 `verify` exits with code `0` on success and `1` on failure, so it can run from cron/systemd as a scheduled restore drill.
 
@@ -399,6 +440,7 @@ Lutra/
 │       ├── Configuration/
 │       │   ├── BackupConfig.cs             # Root config model
 │       │   ├── DatabaseTarget.cs           # Per-database config
+│       │   ├── FileTarget.cs               # Per-file-target config
 │       │   ├── RetentionPolicy.cs          # Retention rules
 │       │   ├── DatabaseType.cs             # PostgreSql/SqlServer/MongoDb enum
 │       │   ├── CompressionType.cs          # None/Gzip enum
@@ -421,6 +463,9 @@ Lutra/
 │       │   ├── SqlServerRestoreProvider.cs # SQL Server .bak restore (+ FILELISTONLY/MOVE)
 │       │   ├── MongoRestoreProvider.cs     # MongoDB mongorestore (namespace remap for tests)
 │       │   └── RestoreOrchestrator.cs      # Coordinates restore and test-restore workflows
+│       ├── Files/
+│       │   ├── FileArchive.cs              # tar archive create/inspect/extract
+│       │   └── GlobMatcher.cs              # Exclude pattern matching
 │       ├── History/
 │       │   ├── IBackupHistoryService.cs    # History service interface
 │       │   ├── BackupHistoryService.cs     # Tracks backup metadata (JSON)

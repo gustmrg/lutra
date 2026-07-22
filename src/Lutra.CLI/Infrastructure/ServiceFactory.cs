@@ -56,18 +56,31 @@ internal static class ServiceFactory
         return new AnomalyDetector(config.Health ?? new HealthConfig());
     }
 
-    public static DatabaseTarget ResolveTarget(BackupConfig config, string targetName)
+    public static IBackupTarget ResolveTarget(BackupConfig config, string targetName)
     {
-        var target = config.Databases.FirstOrDefault(
-            d => d.Name.Equals(targetName, StringComparison.OrdinalIgnoreCase));
+        var target = config.AllTargets().FirstOrDefault(
+            t => t.Name.Equals(targetName, StringComparison.OrdinalIgnoreCase));
 
         if (target is null)
         {
-            var available = string.Join(", ", config.Databases.Select(d => d.Name));
+            var available = string.Join(", ", config.AllTargets().Select(t => t.Name));
             throw new ConfigurationException(
                 $"Target '{targetName}' not found. Available targets: {available}");
         }
 
         return target;
+    }
+
+    public static DatabaseTarget ResolveDatabaseTarget(BackupConfig config, string targetName)
+    {
+        var target = ResolveTarget(config, targetName);
+
+        if (target is not DatabaseTarget databaseTarget)
+        {
+            throw new ConfigurationException(
+                $"Target '{targetName}' is a file target; this command requires a database target.");
+        }
+
+        return databaseTarget;
     }
 }

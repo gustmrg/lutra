@@ -58,6 +58,24 @@ databases:
       max_count: 20      # Keep more backups for critical databases
       max_age_days: 90   # Retain for 90 days
 
+# File targets: back up configuration files as tar archives.
+# Use them for compose files, .env files, reverse proxy configs, and certificates.
+# Do NOT use them for system state (packages, users, firewall rules) — recreate
+# that during a rebuild instead of backing it up.
+# files:
+#   - name: app-config
+#     paths:
+#       - /opt/myapp                  # directories are archived recursively
+#       - /etc/nginx/nginx.conf       # single files work too
+#     exclude:                        # optional glob patterns (* and ?)
+#       - "*.log"
+#       - node_modules                # also matches any path segment with this name
+#     schedule: "*-*-* 03:30:00"
+#     compression: gzip               # gzip (.tar.gz) or none (.tar)
+#     retention:                      # optional per-target override
+#       max_count: 14
+#       max_age_days: 60
+
 # Schedule Syntax (systemd OnCalendar format)
 # Uses systemd calendar expressions, NOT cron syntax.
 #

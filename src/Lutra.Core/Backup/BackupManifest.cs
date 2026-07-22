@@ -8,14 +8,30 @@ public sealed class BackupManifest
     [JsonPropertyName("target_name")]
     public required string TargetName { get; init; }
 
+    /// <summary>
+    /// The kind of target that produced this backup: <c>"database"</c> or <c>"files"</c>.
+    /// </summary>
+    [JsonPropertyName("target_type")]
+    public required string TargetType { get; init; }
+
     [JsonPropertyName("database_type")]
-    public required DatabaseType DatabaseType { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public DatabaseType? DatabaseType { get; init; }
 
     [JsonPropertyName("database")]
-    public required string Database { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Database { get; init; }
 
     [JsonPropertyName("container")]
-    public required string Container { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Container { get; init; }
+
+    /// <summary>
+    /// The configured source paths, present for <c>"files"</c> backups.
+    /// </summary>
+    [JsonPropertyName("paths")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<string>? Paths { get; init; }
 
     [JsonPropertyName("backup_file_name")]
     public required string BackupFileName { get; init; }

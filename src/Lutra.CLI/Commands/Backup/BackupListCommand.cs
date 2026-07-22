@@ -33,6 +33,31 @@ public sealed class BackupListCommand : AsyncCommand<GlobalSettings>
             }
 
             AnsiConsole.Write(table);
+
+            if (config.Files.Count > 0)
+            {
+                AnsiConsole.MarkupLine("\n[bold]File targets[/]");
+
+                var filesTable = new Table();
+                filesTable.AddColumn("Name");
+                filesTable.AddColumn("Paths");
+                filesTable.AddColumn("Excludes");
+                filesTable.AddColumn("Schedule");
+                filesTable.AddColumn("Compression");
+
+                foreach (var ft in config.Files)
+                {
+                    filesTable.AddRow(
+                        ft.Name.EscapeMarkup(),
+                        string.Join("\n", ft.Paths).EscapeMarkup(),
+                        ft.Exclude is { Count: > 0 } ? string.Join(", ", ft.Exclude).EscapeMarkup() : "-",
+                        ft.Schedule.EscapeMarkup(),
+                        ft.Compression.ToString());
+                }
+
+                AnsiConsole.Write(filesTable);
+            }
+
             return Task.FromResult(0);
         }
         catch (ConfigurationException ex)

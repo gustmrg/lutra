@@ -17,4 +17,8 @@ public class RestoreSettings : GlobalSettings
     [Description("Skip the confirmation prompt (for automation).")]
     [DefaultValue(false)]
     public bool Force { get; set; }
+
+    [CommandOption("--destination <DIR>")]
+    [Description("File targets only: directory to extract the archive into. Defaults to / (original locations).")]
+    public string? Destination { get; set; }
 }

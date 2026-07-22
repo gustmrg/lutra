@@ -24,7 +24,17 @@ public sealed class ConfigValidateCommand : AsyncCommand<ConfigValidateSettings>
                 AnsiConsole.MarkupLine($"    - {db.Name.EscapeMarkup()} ({db.Type}, container: {db.Container.EscapeMarkup()})");
             }
 
+            AnsiConsole.MarkupLine($"  File targets: [blue]{config.Files.Count}[/]");
+
+            foreach (var ft in config.Files)
+            {
+                AnsiConsole.MarkupLine($"    - {ft.Name.EscapeMarkup()} ({ft.Paths.Count} path(s))");
+            }
+
             if (!CheckBackupDirectory(config.BackupDirectory))
+                return 1;
+
+            if (!CheckFileTargets(config))
                 return 1;
 
             if (settings.Preflight)
@@ -95,20 +105,123 @@ public sealed class ConfigValidateCommand : AsyncCommand<ConfigValidateSettings>
             }
         }
 
+        foreach (var ft in config.Files)
+        {
+            if (!await ValidateScheduleAsync(ft))
+                failed = true;
+        }
+
         return failed ? 1 : 0;
     }
 
-    private static async Task<bool> ValidateScheduleAsync(DatabaseTarget db)
+    private static bool CheckFileTargets(BackupConfig config)
+    {
+        var valid = true;
+
+        foreach (var ft in config.Files)
+        {
+            foreach (var path in ft.Paths)
+            {
+                if (!File.Exists(path) && !Directory.Exists(path))
+                {
+                    AnsiConsole.MarkupLine($"[red]{ft.Name.EscapeMarkup()}:[/] path does not exist: {path.EscapeMarkup()}");
+                    valid = false;
+                    continue;
+                }
+
+                if (!IsReadable(path))
+                {
+                    AnsiConsole.MarkupLine($"[red]{ft.Name.EscapeMarkup()}:[/] path is not readable: {path.EscapeMarkup()}");
+                    valid = false;
+                    continue;
+                }
+
+                foreach (var sensitive in FindSensitivePaths(path))
+                {
+                    AnsiConsole.MarkupLine(
+                        $"[yellow]{ft.Name.EscapeMarkup()}:[/] '{sensitive.EscapeMarkup()}' looks like it may contain secrets. " +
+                        "Backups are stored unencrypted; restrict access to the backup directory (encryption is planned).");
+                }
+            }
+        }
+
+        return valid;
+    }
+
+    private static bool IsReadable(string path)
+    {
+        try
+        {
+            if (File.Exists(path))
+            {
+                using var stream = File.OpenRead(path);
+                return true;
+            }
+
+            _ = Directory.EnumerateFileSystemEntries(path).FirstOrDefault();
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
+    private static IEnumerable<string> FindSensitivePaths(string path)
+    {
+        if (LooksSensitive(path))
+        {
+            yield return path;
+            yield break;
+        }
+
+        // Also scan the immediate children of a configured directory, since users
+        // typically add whole directories (e.g. an app folder containing .env).
+        if (!Directory.Exists(path))
+            yield break;
+
+        IEnumerable<string> children;
+        try
+        {
+            children = Directory.EnumerateFileSystemEntries(path).ToList();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            yield break;
+        }
+
+        foreach (var child in children)
+        {
+            if (LooksSensitive(child))
+                yield return child;
+        }
+    }
+
+    private static bool LooksSensitive(string path)
+    {
+        var name = Path.GetFileName(path.TrimEnd(Path.DirectorySeparatorChar)).ToLowerInvariant();
+
+        return name.Contains(".env")
+            || name is "id_rsa" or "id_ed25519" or "id_ecdsa" or "id_dsa"
+            || name.EndsWith(".pem")
+            || name.EndsWith(".key")
+            || name.EndsWith(".p12")
+            || name.EndsWith(".pfx")
+            || name.Contains("secret")
+            || name.Contains("credential");
+    }
+
+    private static async Task<bool> ValidateScheduleAsync(IBackupTarget target)
     {
         if (!await CommandExistsAsync("systemd-analyze"))
         {
-            AnsiConsole.MarkupLine($"  {db.Name.EscapeMarkup()}: [yellow]skipped systemd schedule validation; systemd-analyze not found[/]");
+            AnsiConsole.MarkupLine($"  {target.Name.EscapeMarkup()}: [yellow]skipped systemd schedule validation; systemd-analyze not found[/]");
             return true;
         }
 
-        var ok = await CommandSucceedsAsync("systemd-analyze", ["calendar", db.Schedule]);
+        var ok = await CommandSucceedsAsync("systemd-analyze", ["calendar", target.Schedule]);
         if (!ok)
-            AnsiConsole.MarkupLine($"[red]{db.Name.EscapeMarkup()}:[/] invalid systemd calendar expression '{db.Schedule.EscapeMarkup()}'.");
+            AnsiConsole.MarkupLine($"[red]{target.Name.EscapeMarkup()}:[/] invalid systemd calendar expression '{target.Schedule.EscapeMarkup()}'.");
 
         return ok;
     }

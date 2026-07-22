@@ -21,8 +21,12 @@ public sealed class BackupRunCommand : AsyncCommand<TargetSettings>
             {
                 var target = ServiceFactory.ResolveTarget(config, settings.Target);
                 var result = await AnsiConsole.Status()
-                    .StartAsync($"Backing up {target.Name}...", async _ =>
-                        await orchestrator.BackupAsync(target));
+                    .StartAsync($"Backing up {target.Name}...", async _ => target switch
+                    {
+                        DatabaseTarget db => await orchestrator.BackupAsync(db),
+                        FileTarget files => await orchestrator.BackupFilesAsync(files),
+                        _ => throw new ConfigurationException($"Unknown target type for '{target.Name}'.")
+                    });
 
                 results = [result];
             }

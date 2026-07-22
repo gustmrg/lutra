@@ -18,7 +18,7 @@ public sealed class HealthCommand : AsyncCommand<HealthSettings>
 
             var targets = settings.Target is not null
                 ? [ServiceFactory.ResolveTarget(config, settings.Target)]
-                : config.Databases;
+                : config.AllTargets().ToList();
 
             var reports = new List<HealthReport>();
 

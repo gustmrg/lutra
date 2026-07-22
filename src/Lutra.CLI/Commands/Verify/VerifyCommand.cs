@@ -13,7 +13,7 @@ public sealed class VerifyCommand : AsyncCommand<VerifySettings>
         {
             var config = ServiceFactory.LoadConfig(settings);
 
-            DatabaseTarget? target;
+            IBackupTarget? target;
             if (settings.Target is not null)
             {
                 target = ServiceFactory.ResolveTarget(config, settings.Target);
@@ -26,7 +26,7 @@ public sealed class VerifyCommand : AsyncCommand<VerifySettings>
                 target = BackupFileSelection.PromptForTarget(config);
                 if (target is null)
                 {
-                    AnsiConsole.MarkupLine("[yellow]No database targets are configured.[/]");
+                    AnsiConsole.MarkupLine("[yellow]No targets are configured.[/]");
                     return 1;
                 }
             }
@@ -57,19 +57,23 @@ public sealed class VerifyCommand : AsyncCommand<VerifySettings>
             }
 
             AnsiConsole.MarkupLine(
-                $"Verifying [bold]{Path.GetFileName(backupFile).EscapeMarkup()}[/] " +
-                $"via test-restore into a temporary database.");
+                $"Verifying [bold]{Path.GetFileName(backupFile).EscapeMarkup()}[/]...");
 
             var orchestrator = ServiceFactory.CreateRestoreOrchestrator(config);
             var result = await AnsiConsole.Status()
-                .StartAsync("Verifying backup...", async _ =>
-                    await orchestrator.TestRestoreAsync(target, backupFile));
+                .StartAsync("Verifying backup...", async _ => target switch
+                {
+                    DatabaseTarget db => await orchestrator.TestRestoreAsync(db, backupFile),
+                    FileTarget files => await orchestrator.VerifyFilesAsync(files, backupFile),
+                    _ => throw new ConfigurationException($"Unknown target type for '{target.Name}'.")
+                });
 
             if (result.Success)
             {
                 AnsiConsole.MarkupLine("[green]Verification passed[/]");
                 AnsiConsole.MarkupLine($"  Checksum: [green]valid[/]");
-                AnsiConsole.MarkupLine($"  Test-restore: [green]succeeded[/] (temporary database dropped)");
+                if (target is DatabaseTarget)
+                    AnsiConsole.MarkupLine($"  Test-restore: [green]succeeded[/] (temporary database dropped)");
                 if (result.ValidationDetails is not null)
                     AnsiConsole.MarkupLine($"  {result.ValidationDetails.EscapeMarkup()}");
                 AnsiConsole.MarkupLine($"  Duration: {result.Duration.TotalSeconds:0.0}s");

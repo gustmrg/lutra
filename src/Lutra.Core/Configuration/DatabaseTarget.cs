@@ -8,7 +8,7 @@ namespace Lutra.Core.Configuration;
 /// The backup system executes database-specific dump commands inside the
 /// container via <c>docker exec</c>.
 /// </remarks>
-public class DatabaseTarget
+public class DatabaseTarget : IBackupTarget
 {
     /// <summary>
     /// Gets the friendly name for this database target.

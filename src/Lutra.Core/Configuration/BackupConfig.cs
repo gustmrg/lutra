@@ -32,7 +32,18 @@ public class BackupConfig
     /// <summary>
     /// Gets the list of database targets to back up.
     /// </summary>
-    public required List<DatabaseTarget> Databases { get; init; }
+    public List<DatabaseTarget> Databases { get; init; } = [];
+
+    /// <summary>
+    /// Gets the list of file/configuration targets to back up.
+    /// </summary>
+    public List<FileTarget> Files { get; init; } = [];
 
     public HealthConfig? Health { get; init; }
+
+    /// <summary>
+    /// Returns all configured targets (databases first, then file targets).
+    /// </summary>
+    public IEnumerable<IBackupTarget> AllTargets()
+        => Databases.Cast<IBackupTarget>().Concat(Files);
 }

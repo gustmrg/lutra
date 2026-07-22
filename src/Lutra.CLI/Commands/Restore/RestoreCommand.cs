@@ -13,7 +13,7 @@ public sealed class RestoreCommand : AsyncCommand<RestoreSettings>
         {
             var config = ServiceFactory.LoadConfig(settings);
 
-            DatabaseTarget? target;
+            IBackupTarget? target;
             if (settings.Target is not null)
             {
                 target = ServiceFactory.ResolveTarget(config, settings.Target);
@@ -26,7 +26,7 @@ public sealed class RestoreCommand : AsyncCommand<RestoreSettings>
                 target = BackupFileSelection.PromptForTarget(config);
                 if (target is null)
                 {
-                    AnsiConsole.MarkupLine("[yellow]No database targets are configured.[/]");
+                    AnsiConsole.MarkupLine("[yellow]No targets are configured.[/]");
                     return 1;
                 }
             }
@@ -58,45 +58,14 @@ public sealed class RestoreCommand : AsyncCommand<RestoreSettings>
                 return 1;
             }
 
-            AnsiConsole.Write(new Panel(
-                    $"Database:  [bold]{target.Database.EscapeMarkup()}[/]\n" +
-                    $"Container: [bold]{target.Container.EscapeMarkup()}[/]\n" +
-                    $"Backup:    [bold]{Path.GetFileName(backupFile).EscapeMarkup()}[/]")
-                .Header("[red] DESTRUCTIVE OPERATION [/]")
-                .Border(BoxBorder.Heavy)
-                .BorderStyle(Color.Red));
-            AnsiConsole.MarkupLine(
-                "[red]This will overwrite the current contents of the database with the backup.[/]");
-
-            if (!settings.Force)
-            {
-                if (!EnsureInteractive())
-                    return 1;
-
-                var confirmed = AnsiConsole.Prompt(
-                    new ConfirmationPrompt("Proceed with restore?") { DefaultValue = false });
-                if (!confirmed)
-                {
-                    AnsiConsole.MarkupLine("[yellow]Restore cancelled.[/]");
-                    return 1;
-                }
-            }
-
             var orchestrator = ServiceFactory.CreateRestoreOrchestrator(config);
-            var result = await AnsiConsole.Status()
-                .StartAsync($"Restoring {target.Name}...", async _ =>
-                    await orchestrator.RestoreAsync(target, backupFile));
 
-            if (result.Success)
+            return target switch
             {
-                AnsiConsole.MarkupLine(
-                    $"[green]Restore completed[/] in {result.Duration.TotalSeconds:0.0}s. " +
-                    $"Database '{result.DestinationDatabase?.EscapeMarkup()}' was replaced with the backup contents.");
-                return 0;
-            }
-
-            AnsiConsole.MarkupLine($"[red]Restore failed:[/] {result.ErrorMessage?.EscapeMarkup()}");
-            return 1;
+                DatabaseTarget databaseTarget => await RestoreDatabaseAsync(orchestrator, databaseTarget, backupFile, settings),
+                FileTarget fileTarget => await RestoreFilesAsync(orchestrator, fileTarget, backupFile, settings),
+                _ => 1
+            };
         }
         catch (ConfigurationException ex)
         {
@@ -108,6 +77,93 @@ public sealed class RestoreCommand : AsyncCommand<RestoreSettings>
             AnsiConsole.MarkupLine($"[red]Error:[/] {ex.Message.EscapeMarkup()}");
             return 1;
         }
+    }
+
+    private static async Task<int> RestoreDatabaseAsync(
+        Core.Restore.RestoreOrchestrator orchestrator,
+        DatabaseTarget target,
+        string backupFile,
+        RestoreSettings settings)
+    {
+        AnsiConsole.Write(new Panel(
+                $"Database:  [bold]{target.Database.EscapeMarkup()}[/]\n" +
+                $"Container: [bold]{target.Container.EscapeMarkup()}[/]\n" +
+                $"Backup:    [bold]{Path.GetFileName(backupFile).EscapeMarkup()}[/]")
+            .Header("[red] DESTRUCTIVE OPERATION [/]")
+            .Border(BoxBorder.Heavy)
+            .BorderStyle(Color.Red));
+        AnsiConsole.MarkupLine(
+            "[red]This will overwrite the current contents of the database with the backup.[/]");
+
+        if (!Confirm(settings.Force))
+            return 1;
+
+        var result = await AnsiConsole.Status()
+            .StartAsync($"Restoring {target.Name}...", async _ =>
+                await orchestrator.RestoreAsync(target, backupFile));
+
+        if (result.Success)
+        {
+            AnsiConsole.MarkupLine(
+                $"[green]Restore completed[/] in {result.Duration.TotalSeconds:0.0}s. " +
+                $"Database '{result.DestinationDatabase?.EscapeMarkup()}' was replaced with the backup contents.");
+            return 0;
+        }
+
+        AnsiConsole.MarkupLine($"[red]Restore failed:[/] {result.ErrorMessage?.EscapeMarkup()}");
+        return 1;
+    }
+
+    private static async Task<int> RestoreFilesAsync(
+        Core.Restore.RestoreOrchestrator orchestrator,
+        FileTarget target,
+        string backupFile,
+        RestoreSettings settings)
+    {
+        var destination = settings.Destination ?? "/";
+
+        AnsiConsole.Write(new Panel(
+                $"Archive:     [bold]{Path.GetFileName(backupFile).EscapeMarkup()}[/]\n" +
+                $"Destination: [bold]{destination.EscapeMarkup()}[/]")
+            .Header("[red] DESTRUCTIVE OPERATION [/]")
+            .Border(BoxBorder.Heavy)
+            .BorderStyle(Color.Red));
+        AnsiConsole.MarkupLine(
+            "[red]Files in the archive will overwrite files with the same paths at the destination.[/]");
+
+        if (!Confirm(settings.Force))
+            return 1;
+
+        var result = await AnsiConsole.Status()
+            .StartAsync($"Extracting {target.Name}...", async _ =>
+                await orchestrator.RestoreFilesAsync(target, backupFile, destination));
+
+        if (result.Success)
+        {
+            AnsiConsole.MarkupLine(
+                $"[green]Restore completed[/] in {result.Duration.TotalSeconds:0.0}s. " +
+                $"Archive extracted to '{result.DestinationDatabase?.EscapeMarkup()}'.");
+            return 0;
+        }
+
+        AnsiConsole.MarkupLine($"[red]Restore failed:[/] {result.ErrorMessage?.EscapeMarkup()}");
+        return 1;
+    }
+
+    private static bool Confirm(bool force)
+    {
+        if (force)
+            return true;
+
+        if (!EnsureInteractive())
+            return false;
+
+        var confirmed = AnsiConsole.Prompt(
+            new ConfirmationPrompt("Proceed with restore?") { DefaultValue = false });
+        if (!confirmed)
+            AnsiConsole.MarkupLine("[yellow]Restore cancelled.[/]");
+
+        return confirmed;
     }
 
     private static bool EnsureInteractive()

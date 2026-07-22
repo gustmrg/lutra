@@ -34,7 +34,7 @@ public sealed class ScheduleInstallCommand : AsyncCommand<TargetSettings>
 
             var targets = settings.Target is not null
                 ? [ServiceFactory.ResolveTarget(config, settings.Target)]
-                : config.Databases;
+                : config.AllTargets().ToList();
 
             foreach (var target in targets)
             {
@@ -59,7 +59,7 @@ public sealed class ScheduleInstallCommand : AsyncCommand<TargetSettings>
         }
     }
 
-    private static void InstallUnit(string unitName, DatabaseTarget target, string lutraPath, string configPath, string envFilePath)
+    private static void InstallUnit(string unitName, IBackupTarget target, string lutraPath, string configPath, string envFilePath)
     {
         var serviceContent = $"""
             [Unit]

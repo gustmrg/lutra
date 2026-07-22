@@ -25,7 +25,7 @@ public sealed class CleanupCommand : AsyncCommand<CleanupSettings>
             }
             else
             {
-                foreach (var target in config.Databases)
+                foreach (var target in config.AllTargets())
                 {
                     var deleted = await RunCleanupAsync(orchestrator, target, settings.DryRun);
                     totalDeleted += deleted;
@@ -53,7 +53,7 @@ public sealed class CleanupCommand : AsyncCommand<CleanupSettings>
 
     private static async Task<int> RunCleanupAsync(
         BackupOrchestrator orchestrator,
-        DatabaseTarget target,
+        IBackupTarget target,
         bool dryRun)
     {
         if (!dryRun)
