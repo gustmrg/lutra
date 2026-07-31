@@ -37,4 +37,10 @@ public class RetentionPolicy
     /// if they also exceed the <see cref="MaxCount"/> threshold.
     /// </remarks>
     public int MaxAgeDays { get; init; } = 30;
+
+    /// <summary>Controls whether both limits or either limit must match before deletion.</summary>
+    public RetentionMode Mode { get; init; } = RetentionMode.Both;
+
+    /// <summary>Always preserves at least this many newest successful backups.</summary>
+    public int KeepAtLeast { get; init; } = 1;
 }

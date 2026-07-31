@@ -59,6 +59,11 @@ internal static class ServiceFactory
         return new BackupReconciliationService(config, CreateHistoryService(config));
     }
 
+    public static OrphanCleanupService CreateOrphanCleanupService(BackupConfig config)
+    {
+        return new OrphanCleanupService(config, CreateHistoryService(config));
+    }
+
     public static AnomalyDetector CreateAnomalyDetector(BackupConfig config)
     {
         return new AnomalyDetector(config.Health ?? new HealthConfig());

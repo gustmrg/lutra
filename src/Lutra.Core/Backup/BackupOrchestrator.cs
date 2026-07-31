@@ -345,16 +345,23 @@ public class BackupOrchestrator
             .OrderByDescending(r => r.Timestamp)
             .ToList();
 
-        if (successRecords.Count <= retention.MaxCount)
-            return [];
-
         var cutoffDate = DateTime.UtcNow.AddDays(-retention.MaxAgeDays);
 
         return successRecords
-            .Skip(retention.MaxCount)
-            .Where(r => r.Timestamp < cutoffDate)
-            .Select(record =>
+            .Select((record, index) => new
             {
+                Record = record,
+                Index = index,
+                CountExceeded = index >= retention.MaxCount,
+                AgeExceeded = record.Timestamp < cutoffDate
+            })
+            .Where(item => item.Index >= retention.KeepAtLeast)
+            .Where(item => retention.Mode == RetentionMode.Both
+                ? item.CountExceeded && item.AgeExceeded
+                : item.CountExceeded || item.AgeExceeded)
+            .Select(item =>
+            {
+                var record = item.Record;
                 var backupPath = Path.Combine(_config.BackupDirectory, target.Name, record.FileName);
                 string[] paths =
                 [

@@ -9,7 +9,9 @@ backup_directory: /var/backups/lutra
 # Global retention policy (can be overridden per database)
 retention:
   max_count: 10        # Keep at most 10 backups per target
-  max_age_days: 30     # Delete backups older than 30 days (when max_count also exceeded)
+  max_age_days: 30     # Age threshold
+  mode: both            # both (conservative) or either
+  keep_at_least: 1      # Never delete this many newest backups
 
 # Optional offsite sync using SSH and rsync. Prefer a restricted remote user and
 # consider a pull-based job on the Raspberry Pi for stronger source isolation.

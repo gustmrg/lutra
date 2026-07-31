@@ -42,7 +42,9 @@ backup_directory: {backupDirectory}
 
 retention:
   max_count: 10        # Keep at most 10 backups per target
-  max_age_days: 30     # Delete backups older than 30 days (when max_count also exceeded)
+  max_age_days: 30     # Age threshold
+  mode: both            # both (conservative) or either
+  keep_at_least: 1      # Always preserve this many newest backups
 
 # Optional SSH/rsync offsite sync (Raspberry Pi or another SSH host).
 # sync:

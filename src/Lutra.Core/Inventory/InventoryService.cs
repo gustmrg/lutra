@@ -321,10 +321,23 @@ public sealed class InventoryService
             .ToList();
         var cutoff = DateTime.UtcNow.AddDays(-retention.MaxAgeDays);
 
-        foreach (var file in files.Skip(retention.MaxCount).Where(file => file.LastWriteTimeUtc < cutoff))
+        var candidates = files
+            .Select((file, index) => new
+            {
+                File = file,
+                Index = index,
+                CountExceeded = index >= retention.MaxCount,
+                AgeExceeded = file.LastWriteTimeUtc < cutoff
+            })
+            .Where(item => item.Index >= retention.KeepAtLeast)
+            .Where(item => retention.Mode == RetentionMode.Both
+                ? item.CountExceeded && item.AgeExceeded
+                : item.CountExceeded || item.AgeExceeded);
+
+        foreach (var candidate in candidates)
         {
-            File.Delete(file.FullName);
-            var checksum = BackupIntegrity.GetChecksumPath(file.FullName);
+            File.Delete(candidate.File.FullName);
+            var checksum = BackupIntegrity.GetChecksumPath(candidate.File.FullName);
             if (File.Exists(checksum))
                 File.Delete(checksum);
         }

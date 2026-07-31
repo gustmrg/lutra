@@ -50,4 +50,7 @@ public interface IBackupHistoryService
     /// <see langword="false"/> if no matching record existed.
     /// </returns>
     Task<bool> RemoveRecordAsync(string targetName, string fileName, CancellationToken cancellationToken = default);
+
+    /// <summary>Removes old non-backup records and failed backup attempts.</summary>
+    Task<int> PruneOperationalRecordsAsync(DateTime olderThan, CancellationToken cancellationToken = default);
 }

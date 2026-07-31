@@ -168,6 +168,9 @@ lutra history --target my-postgres           # Show history for specific target
 lutra cleanup                                # Remove old backups per retention policy
 lutra cleanup --target my-postgres           # Clean up specific target
 lutra cleanup --dry-run                      # Preview what would be deleted
+lutra cleanup --orphan-sidecars              # Remove sidecars without backup files
+lutra cleanup --orphan-files --force         # Explicitly remove untracked backup files
+lutra cleanup --prune-history                # Prune old failures/verify/sync records
 lutra health                                 # Analyze backup health and detect anomalies
 lutra health --target my-postgres            # Analyze health for a specific target
 lutra health --json                          # Machine-readable health report
@@ -212,7 +215,9 @@ Most commands support these options:
 |------------------------|---------|------------------------|---------------------------------------|
 | `backup_directory`     | string  | —                      | Base directory for all backup files   |
 | `retention.max_count`  | integer | `10`                   | Max backups to keep per database      |
-| `retention.max_age_days` | integer | `30`                 | Delete backups older than N days      |
+| `retention.max_age_days` | integer | `30`                 | Backup age threshold in days          |
+| `retention.mode`         | enum    | `both`                | Delete when `both` or `either` limit matches |
+| `retention.keep_at_least`| integer | `1`                   | Always preserve this many newest backups |
 | `notifications.webhooks` | list | `[]` | JSON webhook endpoints for operation/health events |
 | `notifications.healthchecks_url` | string | — | Healthchecks.io-compatible ping URL |
 | `sync` | object | — | Optional SSH/rsync offsite destination |
@@ -373,11 +378,13 @@ Lutra runs **on the VPS** alongside your containers. It does not connect to data
 
 ### Retention Policy
 
-Backups are deleted only when **both** conditions are met (conservative approach):
+By default (`mode: both`), backups are deleted only when **both** conditions are met (conservative approach):
 - The backup count exceeds `max_count` for that target
 - The backup age exceeds `max_age_days`
 
-Per-target retention settings override global defaults. Inventory snapshots use the global policy.
+Set `mode: either` to delete when either limit matches. `keep_at_least` always protects the configured number of newest successful backups. Per-target retention settings override global defaults. Inventory snapshots use the global policy. Cleanup deletes checksum and manifest sidecars together with each retained backup.
+
+`cleanup --dry-run` previews every affected path. Orphan sidecars require the explicit `--orphan-sidecars` option. Untracked backup artifacts require `--orphan-files` plus interactive confirmation (or `--force`). `--prune-history` removes old failed attempts and operational verify/sync records while preserving successful backup history.
 
 Successful backups also write integrity sidecars:
 - `.sha256` stores the SHA-256 checksum for the backup file

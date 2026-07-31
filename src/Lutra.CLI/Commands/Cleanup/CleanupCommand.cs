@@ -15,27 +15,58 @@ public sealed class CleanupCommand : AsyncCommand<CleanupSettings>
             var config = ServiceFactory.LoadConfig(settings);
             var orchestrator = ServiceFactory.CreateOrchestrator(config);
 
+            var targets = settings.Target is not null
+                ? new List<IBackupTarget> { ServiceFactory.ResolveTarget(config, settings.Target) }
+                : config.AllTargets().ToList();
             var totalDeleted = 0;
 
-            if (settings.Target is not null)
+            foreach (var target in targets)
+                totalDeleted += await RunCleanupAsync(orchestrator, target, settings.DryRun);
+
+            if (settings.OrphanFiles && !settings.DryRun && !ConfirmUntrackedDeletion(settings.Force))
+                return 1;
+
+            if (settings.OrphanSidecars || settings.OrphanFiles)
             {
-                var target = ServiceFactory.ResolveTarget(config, settings.Target);
-                var deleted = await RunCleanupAsync(orchestrator, target, settings.DryRun);
-                totalDeleted += deleted;
-            }
-            else
-            {
-                foreach (var target in config.AllTargets())
+                var orphanService = ServiceFactory.CreateOrphanCleanupService(config);
+                foreach (var target in targets)
                 {
-                    var deleted = await RunCleanupAsync(orchestrator, target, settings.DryRun);
-                    totalDeleted += deleted;
+                    var candidates = await orphanService.FindAsync(target, settings.OrphanFiles);
+                    if (!settings.OrphanSidecars)
+                        candidates = candidates.Where(candidate => candidate.Kind == OrphanKind.BackupWithoutHistory).ToList();
+
+                    foreach (var candidate in candidates)
+                    {
+                        AnsiConsole.MarkupLine($"  {target.Name.EscapeMarkup()}: {(settings.DryRun ? "would remove" : "removing")} [yellow]{candidate.Kind}[/]");
+                        foreach (var path in candidate.Paths.Where(File.Exists))
+                            AnsiConsole.MarkupLine($"    [grey]{path.EscapeMarkup()}[/]");
+                    }
+                    if (!settings.DryRun)
+                        OrphanCleanupService.Delete(candidates);
+                }
+            }
+
+            if (settings.PruneHistory)
+            {
+                var cutoff = DateTime.UtcNow.AddDays(-config.Retention.MaxAgeDays);
+                var history = ServiceFactory.CreateHistoryService(config);
+                if (settings.DryRun)
+                {
+                    var records = await history.GetAllRecordsAsync();
+                    var count = records.Count(record => record.Timestamp < cutoff && (!record.Success || record.RecordType is not null));
+                    AnsiConsole.MarkupLine($"  History: would prune [blue]{count}[/] operational record(s)");
+                }
+                else
+                {
+                    var count = await history.PruneOperationalRecordsAsync(cutoff);
+                    AnsiConsole.MarkupLine($"  History: pruned [blue]{count}[/] operational record(s)");
                 }
             }
 
             if (settings.DryRun)
-                AnsiConsole.MarkupLine($"\n[yellow]Dry run complete.[/] {totalDeleted} backup(s) would be removed.");
+                AnsiConsole.MarkupLine($"\n[yellow]Dry run complete.[/] {totalDeleted} retained backup(s) would be removed.");
             else
-                AnsiConsole.MarkupLine($"\n[green]Cleanup complete.[/] Removed {totalDeleted} total backup(s).");
+                AnsiConsole.MarkupLine($"\n[green]Cleanup complete.[/] Removed {totalDeleted} retained backup(s).");
 
             return 0;
         }
@@ -49,6 +80,19 @@ public sealed class CleanupCommand : AsyncCommand<CleanupSettings>
             AnsiConsole.MarkupLine($"[red]Error:[/] {ex.Message.EscapeMarkup()}");
             return 1;
         }
+    }
+
+    private static bool ConfirmUntrackedDeletion(bool force)
+    {
+        if (force)
+            return true;
+        if (!AnsiConsole.Profile.Capabilities.Interactive)
+        {
+            AnsiConsole.MarkupLine("[red]--orphan-files requires confirmation.[/] Use --force for non-interactive cleanup.");
+            return false;
+        }
+        return AnsiConsole.Prompt(new ConfirmationPrompt(
+            "Delete backup files that have no successful history entry?") { DefaultValue = false });
     }
 
     private static async Task<int> RunCleanupAsync(

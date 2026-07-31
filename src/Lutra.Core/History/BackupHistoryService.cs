@@ -64,6 +64,21 @@ public class BackupHistoryService : IBackupHistoryService
         }, cancellationToken);
     }
 
+    public async Task<int> PruneOperationalRecordsAsync(
+        DateTime olderThan,
+        CancellationToken cancellationToken = default)
+    {
+        return await WithHistoryLockAsync(async () =>
+        {
+            var records = await LoadRecordsAsync(cancellationToken);
+            var removed = records.RemoveAll(record =>
+                record.Timestamp < olderThan && (!record.Success || record.RecordType is not null));
+            if (removed > 0)
+                await SaveRecordsAsync(records, cancellationToken);
+            return removed;
+        }, cancellationToken);
+    }
+
     private async Task<List<BackupRecord>> LoadRecordsAsync(CancellationToken cancellationToken)
     {
         if (!File.Exists(_historyFilePath))

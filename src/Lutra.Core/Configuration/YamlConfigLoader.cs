@@ -14,6 +14,7 @@ public class YamlConfigLoader : IConfigLoader
         .WithNamingConvention(UnderscoredNamingConvention.Instance)
         .WithTypeConverter(new CaseInsensitiveEnumConverter<DatabaseType>())
         .WithTypeConverter(new CaseInsensitiveEnumConverter<CompressionType>())
+        .WithTypeConverter(new CaseInsensitiveEnumConverter<RetentionMode>())
         .Build();
 
     /// <inheritdoc />
@@ -205,6 +206,8 @@ public class YamlConfigLoader : IConfigLoader
             throw new ConfigurationException($"{prefix}: 'max_count' must be greater than zero.");
         if (retention.MaxAgeDays <= 0)
             throw new ConfigurationException($"{prefix}: 'max_age_days' must be greater than zero.");
+        if (retention.KeepAtLeast < 0)
+            throw new ConfigurationException($"{prefix}: 'keep_at_least' cannot be negative.");
     }
 
     private static void ValidatePostgresFormat(string prefix, DatabaseTarget db)
