@@ -577,6 +577,14 @@ sudo chmod +x /usr/local/bin/lutra
 ./setup.sh
 ```
 
+Run the automated test suite with:
+
+```bash
+dotnet test Lutra.slnx
+```
+
+CI runs unit tests, CLI smoke tests, and validates self-contained `linux-x64` and `linux-arm64` release archive layouts. Docker-based restore tests remain opt-in/manual because they require disposable database containers.
+
 ## Tech Stack
 
 | Component       | Technology      |

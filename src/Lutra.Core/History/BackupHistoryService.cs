@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Text.Json;
 
 namespace Lutra.Core.History;
@@ -11,6 +12,7 @@ public class BackupHistoryService : IBackupHistoryService
     {
         WriteIndented = true
     };
+    private static readonly ConcurrentDictionary<string, SemaphoreSlim> ProcessLocks = new(StringComparer.Ordinal);
 
     public BackupHistoryService(string backupDirectory)
     {
@@ -107,17 +109,42 @@ public class BackupHistoryService : IBackupHistoryService
         var directory = Path.GetDirectoryName(_historyFilePath)!;
         Directory.CreateDirectory(directory);
 
-        await using var lockStream = new FileStream(
-            _lockFilePath,
-            FileMode.OpenOrCreate,
-            FileAccess.ReadWrite,
-            FileShare.ReadWrite,
-            1,
-            useAsync: false);
+        var processLock = ProcessLocks.GetOrAdd(_lockFilePath, _ => new SemaphoreSlim(1, 1));
+        await processLock.WaitAsync(cancellationToken);
+        try
+        {
+            await using var lockStream = await AcquireHistoryLockAsync(cancellationToken);
+            return await action();
+        }
+        finally
+        {
+            processLock.Release();
+        }
+    }
 
-        cancellationToken.ThrowIfCancellationRequested();
-        LockFile(lockStream);
-        return await action();
+    private async Task<FileStream> AcquireHistoryLockAsync(CancellationToken cancellationToken)
+    {
+        while (true)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var stream = new FileStream(
+                _lockFilePath,
+                FileMode.OpenOrCreate,
+                FileAccess.ReadWrite,
+                FileShare.ReadWrite,
+                1,
+                useAsync: false);
+            try
+            {
+                LockFile(stream);
+                return stream;
+            }
+            catch (IOException)
+            {
+                await stream.DisposeAsync();
+                await Task.Delay(25, cancellationToken);
+            }
+        }
     }
 
     private static void LockFile(FileStream stream)

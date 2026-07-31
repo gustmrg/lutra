@@ -153,7 +153,7 @@ public class BackupOrchestrator
         {
             await using var targetLock = TargetLock.Acquire(_config.BackupDirectory, target.Name, "Backup");
 
-            fileName = BuildFileName(target.Name, startTime, backupId, extension, compression);
+            fileName = BackupFileNaming.Build(target.Name, startTime, backupId, extension, compression);
             var targetDir = Path.Combine(_config.BackupDirectory, target.Name);
             Directory.CreateDirectory(targetDir);
             finalFilePath = Path.Combine(targetDir, fileName);
@@ -373,21 +373,6 @@ public class BackupOrchestrator
                 return new BackupCleanupCandidate(record, paths);
             })
             .ToList();
-    }
-
-    private static string BuildFileName(
-        string targetName,
-        DateTime timestamp,
-        string backupId,
-        string extension,
-        CompressionType compression)
-    {
-        var name = $"{targetName}_{timestamp:yyyy-MM-dd}_{timestamp:HHmmss}_{backupId}{extension}";
-
-        if (compression == CompressionType.Gzip)
-            name += ".gz";
-
-        return name;
     }
 
     private static void DeleteIfExists(string? path)

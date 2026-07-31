@@ -1,0 +1,75 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_VERSION: '10.0.x'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+      - run: dotnet restore Lutra.slnx
+      - run: dotnet build Lutra.slnx --configuration Release --no-restore
+      - run: dotnet test Lutra.slnx --configuration Release --no-build --logger trx
+
+  cli-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+      - name: Create smoke configuration
+        run: |
+          mkdir -p "$RUNNER_TEMP/lutra-source" "$RUNNER_TEMP/lutra-backups"
+          echo smoke > "$RUNNER_TEMP/lutra-source/config.txt"
+          cat > "$RUNNER_TEMP/lutra.yaml" <<EOF
+          backup_directory: $RUNNER_TEMP/lutra-backups
+          retention:
+            max_count: 3
+            max_age_days: 7
+          files:
+            - name: smoke-files
+              paths: [$RUNNER_TEMP/lutra-source/config.txt]
+              schedule: daily
+          EOF
+      - name: Run CLI smoke tests
+        run: |
+          dotnet run --project src/Lutra.CLI -- config validate --config "$RUNNER_TEMP/lutra.yaml"
+          dotnet run --project src/Lutra.CLI -- backup list --config "$RUNNER_TEMP/lutra.yaml"
+          dotnet run --project src/Lutra.CLI -- cleanup --dry-run --config "$RUNNER_TEMP/lutra.yaml"
+          set +e
+          dotnet run --project src/Lutra.CLI -- health --config "$RUNNER_TEMP/lutra.yaml"
+          status=$?
+          set -e
+          test "$status" -eq 1
+
+  release-artifacts:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        rid: [linux-x64, linux-arm64]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+      - name: Publish and verify release layout
+        run: |
+          dotnet publish src/Lutra.CLI/Lutra.CLI.csproj -c Release -r ${{ matrix.rid }} \
+            --self-contained -p:PublishSingleFile=true -o publish
+          test -x publish/Lutra.CLI
+          mv publish/Lutra.CLI publish/lutra
+          tar -czf lutra-${{ matrix.rid }}.tar.gz -C publish lutra
+          test "$(tar -tzf lutra-${{ matrix.rid }}.tar.gz)" = "lutra"

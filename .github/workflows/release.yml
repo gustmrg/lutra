@@ -49,9 +49,13 @@ jobs:
         run: |
           mv publish/Lutra.CLI publish/lutra
           tar -czf lutra-${{ matrix.rid }}.tar.gz -C publish lutra
+          test "$(tar -tzf lutra-${{ matrix.rid }}.tar.gz)" = "lutra"
 
       - name: Generate SHA256 checksum
         run: sha256sum lutra-${{ matrix.rid }}.tar.gz > lutra-${{ matrix.rid }}.tar.gz.sha256
+
+      - name: Verify checksum
+        run: sha256sum --check lutra-${{ matrix.rid }}.tar.gz.sha256
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
