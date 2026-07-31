@@ -76,6 +76,20 @@ databases:
 #       max_count: 14
 #       max_age_days: 60
 
+# Optional server inventory snapshots. These are restoration aids, not backups of
+# system state. Collector failures are noted in the snapshot and never fail backups.
+# inventory:
+#   enabled: true
+#   schedule: "*-*-* 04:00:00"
+#   # Omit collectors to run all of them. Valid values:
+#   # docker, packages, systemd, crontabs, firewall
+#   collectors:
+#     - docker
+#     - packages
+#     - systemd
+#     - crontabs
+#     - firewall
+
 # Schedule Syntax (systemd OnCalendar format)
 # Uses systemd calendar expressions, NOT cron syntax.
 #

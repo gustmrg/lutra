@@ -1,4 +1,5 @@
 using Lutra.Core.Health;
+using Lutra.Core.Inventory;
 
 namespace Lutra.Core.Configuration;
 
@@ -40,6 +41,11 @@ public class BackupConfig
     public List<FileTarget> Files { get; init; } = [];
 
     public HealthConfig? Health { get; init; }
+
+    /// <summary>
+    /// Gets optional server inventory snapshot configuration.
+    /// </summary>
+    public InventoryConfig? Inventory { get; init; }
 
     /// <summary>
     /// Returns all configured targets (databases first, then file targets).

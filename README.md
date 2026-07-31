@@ -20,6 +20,7 @@ It uses `docker exec` to run native dump tools (`pg_dump`, `mongodump`, `sqlcmd`
   - [Global Settings](#global-settings)
   - [Database Target Settings](#database-target-settings)
   - [File Target Settings](#file-target-settings)
+  - [Server Inventory Settings](#server-inventory-settings)
   - [Full Example](#full-example)
 - [How It Works](#how-it-works)
   - [Backup File Structure](#backup-file-structure)
@@ -167,6 +168,7 @@ lutra cleanup --target my-postgres           # Clean up specific target
 lutra cleanup --dry-run                      # Preview what would be deleted
 lutra health                                 # Analyze backup health and detect anomalies
 lutra health --target my-postgres            # Analyze health for a specific target
+lutra inventory                              # Capture a server inventory snapshot
 
 # Configuration
 lutra config init                            # Create config directories and template files
@@ -258,6 +260,20 @@ files:
 
 > **Secrets**: file targets often include `.env` files and private keys. `lutra config validate` warns when configured paths look sensitive. Backups are stored unencrypted — restrict access to the backup directory (encryption support is planned).
 
+### Server Inventory Settings
+
+An optional inventory snapshot records a small, human-readable server inventory under `<backup_directory>/inventory/`. It is a rebuild aid, not a backup of packages, users, firewall rules, or other system state. Snapshots run after an unfiltered `backup run` and can also use their own systemd timer.
+
+```yaml
+inventory:
+  enabled: true
+  schedule: "*-*-* 04:00:00"
+  # Omit collectors to run all of them.
+  collectors: [docker, packages, systemd, crontabs, firewall]
+```
+
+Collectors are best-effort: missing tools and command failures are written into the snapshot and do not fail database or file backups. Docker environment **names** are recorded but values are omitted; cron commands are also omitted to avoid capturing embedded credentials. Global retention settings apply to inventory snapshots.
+
 ### Full Example
 
 ```yaml
@@ -329,6 +345,9 @@ Lutra runs **on the VPS** alongside your containers. It does not connect to data
 ```
 /var/backups/lutra/
 ├── backup-history.json
+├── inventory/
+│   ├── inventory_2026-02-08_040000_a1b2c3d4e5f6.md
+│   └── inventory_2026-02-08_040000_a1b2c3d4e5f6.md.sha256
 ├── example-db/
 │   ├── example-db_2026-02-08_030000_a1b2c3d4e5f6.dump.gz
 │   ├── example-db_2026-02-08_030000_a1b2c3d4e5f6.dump.gz.sha256
@@ -348,7 +367,7 @@ Backups are deleted only when **both** conditions are met (conservative approach
 - The backup count exceeds `max_count` for that target
 - The backup age exceeds `max_age_days`
 
-Per-database retention settings override global defaults.
+Per-target retention settings override global defaults. Inventory snapshots use the global policy.
 
 Successful backups also write integrity sidecars:
 - `.sha256` stores the SHA-256 checksum for the backup file

@@ -135,6 +135,23 @@ public class YamlConfigLoader : IConfigLoader
             }
         }
 
+        if (config.Inventory is { } inventory)
+        {
+            if (string.IsNullOrWhiteSpace(inventory.Schedule))
+                throw new ConfigurationException("inventory: 'schedule' is required.");
+            if (LooksLikeCronExpression(inventory.Schedule))
+                throw new ConfigurationException(
+                    "inventory: 'schedule' looks like cron syntax. Use a systemd calendar expression such as \"*-*-* 04:00:00\".");
+
+            string[] validCollectors = ["docker", "packages", "systemd", "crontabs", "firewall"];
+            var unknownCollectors = inventory.Collectors?
+                .Where(c => !validCollectors.Contains(c, StringComparer.OrdinalIgnoreCase))
+                .ToList() ?? [];
+            if (unknownCollectors.Count > 0)
+                throw new ConfigurationException(
+                    $"inventory: unknown collector(s): {string.Join(", ", unknownCollectors)}. Valid values: {string.Join(", ", validCollectors)}.");
+        }
+
         for (var i = 0; i < config.Files.Count; i++)
         {
             var ft = config.Files[i];

@@ -82,6 +82,19 @@ databases:
   #   schedule: "*-*-* 02:00:00"    # Daily at 2 AM
   #   compression: gzip
 
+# Optional server inventory snapshots (restoration aid, not system-state backup).
+# Collector failures are recorded in the snapshot and never fail a backup run.
+# inventory:
+#   enabled: true
+#   schedule: "*-*-* 04:00:00"
+#   # Omit collectors to run all: docker, packages, systemd, crontabs, firewall
+#   collectors:
+#     - docker
+#     - packages
+#     - systemd
+#     - crontabs
+#     - firewall
+
 # File targets back up configuration files as tar archives.
 # Use them for compose files, .env files, reverse proxy configs, and certificates.
 # Do NOT use them for system state (packages, users, firewall) — recreate that instead.

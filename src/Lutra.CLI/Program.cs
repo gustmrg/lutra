@@ -3,6 +3,7 @@ using Lutra.CLI.Commands.Cleanup;
 using Lutra.CLI.Commands.Config;
 using Lutra.CLI.Commands.Health;
 using Lutra.CLI.Commands.History;
+using Lutra.CLI.Commands.Inventory;
 using Lutra.CLI.Commands.Restore;
 using Lutra.CLI.Commands.Schedule;
 using Lutra.CLI.Commands.Uninstall;
@@ -47,6 +48,9 @@ app.Configure(config =>
 
     config.AddCommand<HealthCommand>("health")
         .WithDescription("Analyze backup health and detect anomalies.");
+
+    config.AddCommand<InventoryCommand>("inventory")
+        .WithDescription("Capture a best-effort server inventory snapshot.");
 
     config.AddBranch<CommandSettings>("config", cfg =>
     {

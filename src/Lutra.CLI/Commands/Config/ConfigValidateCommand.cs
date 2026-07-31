@@ -31,6 +31,12 @@ public sealed class ConfigValidateCommand : AsyncCommand<ConfigValidateSettings>
                 AnsiConsole.MarkupLine($"    - {ft.Name.EscapeMarkup()} ({ft.Paths.Count} path(s))");
             }
 
+            if (config.Inventory is { } inventory)
+            {
+                var collectors = inventory.Collectors is null ? "all collectors" : string.Join(", ", inventory.Collectors);
+                AnsiConsole.MarkupLine($"  Inventory: {(inventory.Enabled ? "[green]enabled[/]" : "[grey]disabled[/]")} ({collectors.EscapeMarkup()})");
+            }
+
             if (!CheckBackupDirectory(config.BackupDirectory))
                 return 1;
 
@@ -110,6 +116,10 @@ public sealed class ConfigValidateCommand : AsyncCommand<ConfigValidateSettings>
             if (!await ValidateScheduleAsync(ft))
                 failed = true;
         }
+
+        if (config.Inventory is { Enabled: true } inventory
+            && !await ValidateScheduleExpressionAsync("inventory", inventory.Schedule))
+            failed = true;
 
         return failed ? 1 : 0;
     }
@@ -211,17 +221,20 @@ public sealed class ConfigValidateCommand : AsyncCommand<ConfigValidateSettings>
             || name.Contains("credential");
     }
 
-    private static async Task<bool> ValidateScheduleAsync(IBackupTarget target)
+    private static Task<bool> ValidateScheduleAsync(IBackupTarget target)
+        => ValidateScheduleExpressionAsync(target.Name, target.Schedule);
+
+    private static async Task<bool> ValidateScheduleExpressionAsync(string name, string schedule)
     {
         if (!await CommandExistsAsync("systemd-analyze"))
         {
-            AnsiConsole.MarkupLine($"  {target.Name.EscapeMarkup()}: [yellow]skipped systemd schedule validation; systemd-analyze not found[/]");
+            AnsiConsole.MarkupLine($"  {name.EscapeMarkup()}: [yellow]skipped systemd schedule validation; systemd-analyze not found[/]");
             return true;
         }
 
-        var ok = await CommandSucceedsAsync("systemd-analyze", ["calendar", target.Schedule]);
+        var ok = await CommandSucceedsAsync("systemd-analyze", ["calendar", schedule]);
         if (!ok)
-            AnsiConsole.MarkupLine($"[red]{target.Name.EscapeMarkup()}:[/] invalid systemd calendar expression '{target.Schedule.EscapeMarkup()}'.");
+            AnsiConsole.MarkupLine($"[red]{name.EscapeMarkup()}:[/] invalid systemd calendar expression '{schedule.EscapeMarkup()}'.");
 
         return ok;
     }

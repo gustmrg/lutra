@@ -33,7 +33,7 @@ public sealed class ScheduleInstallCommand : AsyncCommand<TargetSettings>
             var resolvedEnvPath = ConfigFileHelper.ResolveEnvPath(settings.EnvFilePath);
 
             var targets = settings.Target is not null
-                ? [ServiceFactory.ResolveTarget(config, settings.Target)]
+                ? new List<IBackupTarget> { ServiceFactory.ResolveTarget(config, settings.Target) }
                 : config.AllTargets().ToList();
 
             foreach (var target in targets)
@@ -41,6 +41,12 @@ public sealed class ScheduleInstallCommand : AsyncCommand<TargetSettings>
                 var unitName = $"lutra-backup-{target.Name}";
                 InstallUnit(unitName, target, lutraPath, resolvedConfigPath, resolvedEnvPath);
                 AnsiConsole.MarkupLine($"  [green]Installed[/] {unitName}.timer ({target.Schedule.EscapeMarkup()})");
+            }
+
+            if (settings.Target is null && config.Inventory is { Enabled: true } inventory)
+            {
+                InstallInventoryUnit(lutraPath, resolvedConfigPath, resolvedEnvPath, inventory.Schedule);
+                AnsiConsole.MarkupLine($"  [green]Installed[/] lutra-inventory.timer ({inventory.Schedule.EscapeMarkup()})");
             }
 
             AnsiConsole.MarkupLine($"\nRun [blue]sudo systemctl daemon-reload[/] to load the new units.");
@@ -57,6 +63,33 @@ public sealed class ScheduleInstallCommand : AsyncCommand<TargetSettings>
             AnsiConsole.MarkupLine("[red]Permission denied.[/] Run this command as root (sudo).");
             return Task.FromResult(1);
         }
+    }
+
+    private static void InstallInventoryUnit(string lutraPath, string configPath, string envFilePath, string schedule)
+    {
+        var serviceContent = $"""
+            [Unit]
+            Description=Lutra server inventory snapshot
+
+            [Service]
+            Type=oneshot
+            ExecStart={lutraPath} inventory --config {configPath} --env-file {envFilePath}
+            """;
+
+        var timerContent = $"""
+            [Unit]
+            Description=Lutra server inventory timer
+
+            [Timer]
+            OnCalendar={schedule}
+            Persistent=true
+
+            [Install]
+            WantedBy=timers.target
+            """;
+
+        File.WriteAllText(Path.Combine(SystemdDir, "lutra-inventory.service"), serviceContent);
+        File.WriteAllText(Path.Combine(SystemdDir, "lutra-inventory.timer"), timerContent);
     }
 
     private static void InstallUnit(string unitName, IBackupTarget target, string lutraPath, string configPath, string envFilePath)
