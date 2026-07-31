@@ -1,4 +1,5 @@
 using Lutra.CLI.Commands.Backup;
+using Lutra.CLI.Commands.Bundle;
 using Lutra.CLI.Commands.Cleanup;
 using Lutra.CLI.Commands.Config;
 using Lutra.CLI.Commands.Health;
@@ -58,6 +59,9 @@ app.Configure(config =>
 
     config.AddCommand<SyncCommand>("sync")
         .WithDescription("Sync backups to an SSH host with rsync.");
+
+    config.AddCommand<BundleCommand>("bundle")
+        .WithDescription("Create a self-describing disaster recovery bundle.");
 
     config.AddBranch<CommandSettings>("config", cfg =>
     {

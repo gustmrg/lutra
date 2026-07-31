@@ -181,6 +181,8 @@ lutra sync --dry-run                         # Preview an offsite rsync
 lutra sync --target my-postgres              # Sync one target directory
 lutra sync --validate                        # Validate SSH/rsync and remote write access
 lutra sync --delete                          # Explicitly mirror local deletions remotely
+lutra bundle                                 # Bundle latest backup of every target + instructions
+lutra bundle --encrypt                       # Encrypt bundle with global age recipient
 
 # Configuration
 lutra config init                            # Create config directories and template files
@@ -554,6 +556,12 @@ Lutra/
 ├── README.md
 └── LICENSE.md
 ```
+
+## Disaster Recovery Bundles
+
+`lutra bundle` creates a checksum-protected archive containing the latest successful artifact and sidecars for every configured database, file, and volume target; the latest inventory snapshot; a copy of `lutra.yaml`; environment variable names without values; and a generated `RESTORE.md`. Bundle creation fails rather than silently omitting a target whose backup is missing.
+
+Use `--encrypt` to protect the complete archive with the globally configured age recipient. Bundles are written under `<backup_directory>/bundles/` by default and are included in a full `lutra sync`. The generated instructions explicitly identify system state that Lutra does not cover.
 
 ## Downloading Backups to a Local Machine
 
