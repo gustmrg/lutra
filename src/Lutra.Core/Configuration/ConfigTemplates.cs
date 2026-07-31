@@ -82,6 +82,7 @@ databases:
     username: postgres
     password_env: POSTGRES_PASSWORD  # Reference to env var in .env file
     schedule: "*-*-* 03:00:00"      # Daily at 3 AM (systemd calendar expression)
+    # verify_schedule: "Sun *-*-* 05:00:00" # Optional restore drill timer
     format: custom                   # custom (.dump) or plain (.sql)
     compression: gzip
 

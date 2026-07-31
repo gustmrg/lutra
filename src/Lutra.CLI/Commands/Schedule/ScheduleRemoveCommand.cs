@@ -34,18 +34,19 @@ public sealed class ScheduleRemoveCommand : AsyncCommand<ScheduleRemoveCommand.S
             }
 
             var unitFiles = Directory.GetFiles(SystemdDir, "lutra-backup-*")
+                .Concat(Directory.GetFiles(SystemdDir, "lutra-verify-*"))
                 .Concat(Directory.GetFiles(SystemdDir, "lutra-inventory.*"))
                 .OrderBy(f => f)
                 .ToList();
 
             if (settings.Target is not null)
             {
-                var prefix = $"lutra-backup-{settings.Target}";
+                var prefixes = new[] { $"lutra-backup-{settings.Target}", $"lutra-verify-{settings.Target}" };
                 unitFiles = unitFiles
                     .Where(f =>
                     {
                         var name = Path.GetFileName(f);
-                        return name == $"{prefix}.service" || name == $"{prefix}.timer";
+                        return prefixes.Any(prefix => name == $"{prefix}.service" || name == $"{prefix}.timer");
                     })
                     .ToList();
             }

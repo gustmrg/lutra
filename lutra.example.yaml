@@ -43,6 +43,7 @@ databases:
     username: postgres               # Database user
     password_env: POSTGRES_PASSWORD  # Environment variable name (from .env file)
     schedule: "*-*-* 03:00:00"      # Daily at 3:00 AM
+    verify_schedule: "Sun *-*-* 05:00:00" # Optional non-destructive restore drill
     format: custom                   # custom (.dump) or plain (.sql)
     compression: gzip                # gzip or none
 

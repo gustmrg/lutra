@@ -70,6 +70,11 @@ public class DatabaseTarget : IBackupTarget
     public string Schedule { get; init; } = "*-*-* 03:00:00";
 
     /// <summary>
+    /// Optional systemd calendar expression for a scheduled non-destructive restore drill.
+    /// </summary>
+    public string? VerifySchedule { get; init; }
+
+    /// <summary>
     /// Gets the database-specific dump format.
     /// </summary>
     /// <remarks>

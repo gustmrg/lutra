@@ -106,6 +106,9 @@ public class YamlConfigLoader : IConfigLoader
             if (LooksLikeCronExpression(db.Schedule))
                 throw new ConfigurationException(
                     $"{prefix} ({db.Name}): 'schedule' looks like cron syntax. Use a systemd calendar expression such as \"*-*-* 03:00:00\".");
+            if (db.VerifySchedule is not null && LooksLikeCronExpression(db.VerifySchedule))
+                throw new ConfigurationException(
+                    $"{prefix} ({db.Name}): 'verify_schedule' looks like cron syntax; use a systemd calendar expression.");
 
             if (db.Retention is not null)
                 ValidateRetention($"{prefix} ({db.Name}).retention", db.Retention);

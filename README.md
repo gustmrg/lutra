@@ -239,6 +239,7 @@ Notifications are best-effort and never change an operation's exit status. Gener
 | `username`     | string    | —              | Database user (required for PG and SQL Server) |
 | `password_env` | string    | —              | Environment variable name holding the password |
 | `schedule`     | string    | `"*-*-* 03:00:00"` | Systemd calendar expression for timer generation |
+| `verify_schedule` | string | — | Optional systemd schedule for non-destructive restore drills |
 | `format`       | enum      | `custom`       | `custom` or `plain` (PostgreSQL only)          |
 | `compression`  | enum      | `gzip`         | `gzip` or `none`                               |
 | `retention`    | object    | global default | Override global retention for this target       |
@@ -434,7 +435,11 @@ Per database specifics:
 - **MongoDB**: remaps namespaces with `--nsFrom`/`--nsTo` into a temporary database. Uses `mongosh` when available, falling back to the legacy `mongo` shell in older images.
 - **File targets**: reads through the archive to validate its integrity and counts the entries.
 
-`verify` exits with code `0` on success and `1` on failure, so it can run from cron/systemd as a scheduled restore drill.
+`verify` exits with code `0` on success and `1` on failure. Set `verify_schedule` on a database target and run `sudo lutra schedule install` to install a dedicated automated restore-drill timer.
+
+### Advanced recovery boundaries
+
+Lutra's default dump workflow intentionally remains simple. For PostgreSQL point-in-time recovery and WAL retention, use pgBackRest or WAL-G and document that repository in the rebuild runbook; copying a live `pg_wal` directory is not a valid backup. For SQL Server differential/log chains, use SQL Server Agent or a specialist maintenance solution until chain-aware restore is required. For MongoDB replica-set oplog consistency and sharded clusters, use MongoDB's supported coordinated backup tooling. Lutra's `config validate --preflight` confirms that each configured container and dump tool are available; test restores are the compatibility check that matters across database versions.
 
 ## Project Structure
 

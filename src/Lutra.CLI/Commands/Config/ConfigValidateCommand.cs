@@ -94,6 +94,9 @@ public sealed class ConfigValidateCommand : AsyncCommand<ConfigValidateSettings>
         {
             if (!await ValidateScheduleAsync(db))
                 failed = true;
+            if (db.VerifySchedule is not null
+                && !await ValidateScheduleExpressionAsync($"{db.Name} restore drill", db.VerifySchedule))
+                failed = true;
 
             if (!await CommandSucceedsAsync("docker", ["inspect", "-f", "{{.State.Running}}", db.Container]))
             {

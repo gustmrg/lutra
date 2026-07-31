@@ -41,6 +41,12 @@ public sealed class ScheduleInstallCommand : AsyncCommand<TargetSettings>
                 var unitName = $"lutra-backup-{target.Name}";
                 InstallUnit(unitName, target, lutraPath, resolvedConfigPath, resolvedEnvPath);
                 AnsiConsole.MarkupLine($"  [green]Installed[/] {unitName}.timer ({target.Schedule.EscapeMarkup()})");
+
+                if (target is DatabaseTarget { VerifySchedule: not null } database)
+                {
+                    InstallVerifyUnit(database, lutraPath, resolvedConfigPath, resolvedEnvPath);
+                    AnsiConsole.MarkupLine($"  [green]Installed[/] lutra-verify-{database.Name}.timer ({database.VerifySchedule!.EscapeMarkup()})");
+                }
             }
 
             if (settings.Target is null && config.Inventory is { Enabled: true } inventory)
@@ -63,6 +69,33 @@ public sealed class ScheduleInstallCommand : AsyncCommand<TargetSettings>
             AnsiConsole.MarkupLine("[red]Permission denied.[/] Run this command as root (sudo).");
             return Task.FromResult(1);
         }
+    }
+
+    private static void InstallVerifyUnit(
+        DatabaseTarget target, string lutraPath, string configPath, string envFilePath)
+    {
+        var unitName = $"lutra-verify-{target.Name}";
+        var serviceContent = $"""
+            [Unit]
+            Description=Lutra restore drill for {target.Name}
+
+            [Service]
+            Type=oneshot
+            ExecStart={lutraPath} verify --target {target.Name} --config {configPath} --env-file {envFilePath}
+            """;
+        var timerContent = $"""
+            [Unit]
+            Description=Lutra restore drill timer for {target.Name}
+
+            [Timer]
+            OnCalendar={target.VerifySchedule}
+            Persistent=true
+
+            [Install]
+            WantedBy=timers.target
+            """;
+        File.WriteAllText(Path.Combine(SystemdDir, $"{unitName}.service"), serviceContent);
+        File.WriteAllText(Path.Combine(SystemdDir, $"{unitName}.timer"), timerContent);
     }
 
     private static void InstallInventoryUnit(string lutraPath, string configPath, string envFilePath, string schedule)
