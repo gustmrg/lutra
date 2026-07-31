@@ -81,6 +81,21 @@ databases:
       max_count: 20      # Keep more backups for critical databases
       max_age_days: 90   # Retain for 90 days
 
+  # SQLite Example (database is the path inside the container)
+  # - name: app-sqlite
+  #   type: sqlite
+  #   container: app-container
+  #   database: /data/app.db
+  #   schedule: "*-*-* 02:30:00"
+  #   compression: gzip
+
+# Docker volume targets use a temporary Alpine helper container.
+# volumes:
+#   - name: app-uploads
+#     volume: app_uploads
+#     schedule: "*-*-* 03:15:00"
+#     compression: gzip
+
 # File targets: back up configuration files as tar archives.
 # Use them for compose files, .env files, reverse proxy configs, and certificates.
 # Do NOT use them for system state (packages, users, firewall rules) — recreate

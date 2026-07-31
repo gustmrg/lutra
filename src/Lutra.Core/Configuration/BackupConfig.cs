@@ -42,6 +42,9 @@ public class BackupConfig
     /// </summary>
     public List<FileTarget> Files { get; init; } = [];
 
+    /// <summary>Gets named Docker volume targets.</summary>
+    public List<VolumeTarget> Volumes { get; init; } = [];
+
     public HealthConfig? Health { get; init; }
 
     /// <summary>
@@ -59,5 +62,5 @@ public class BackupConfig
     /// Returns all configured targets (databases first, then file targets).
     /// </summary>
     public IEnumerable<IBackupTarget> AllTargets()
-        => Databases.Cast<IBackupTarget>().Concat(Files);
+        => Databases.Cast<IBackupTarget>().Concat(Files).Concat(Volumes);
 }

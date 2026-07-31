@@ -18,6 +18,7 @@ It uses `docker exec` to run native dump tools (`pg_dump`, `mongodump`, `sqlcmd`
 - [Configuration Reference](#configuration-reference)
   - [Global Settings](#global-settings)
   - [Database Target Settings](#database-target-settings)
+  - [Docker Volume Target Settings](#docker-volume-target-settings)
   - [File Target Settings](#file-target-settings)
   - [Server Inventory Settings](#server-inventory-settings)
   - [Full Example](#full-example)
@@ -39,6 +40,7 @@ It uses `docker exec` to run native dump tools (`pg_dump`, `mongodump`, `sqlcmd`
 | PostgreSQL | `pg_dump`   | Custom (`.dump`), Plain (`.sql`) |
 | SQL Server | `sqlcmd`    | Native backup (`.bak`)           |
 | MongoDB    | `mongodump` | Archive (`.archive`)             |
+| SQLite     | `sqlite3`   | Consistent online copy (`.sqlite`) |
 
 ## Quick Start
 
@@ -233,7 +235,7 @@ Notifications are best-effort and never change an operation's exit status. Gener
 | Property       | Type       | Default        | Description                                    |
 |----------------|-----------|----------------|------------------------------------------------|
 | `name`         | string    | —              | Friendly name (used in filenames and commands) |
-| `type`         | enum      | —              | `postgresql`, `sqlserver`, or `mongodb`        |
+| `type`         | enum      | —              | `postgresql`, `sqlserver`, `mongodb`, or `sqlite` |
 | `container`    | string    | —              | Docker container name or ID                    |
 | `database`     | string    | —              | Database name inside the container             |
 | `username`     | string    | —              | Database user (required for PG and SQL Server) |
@@ -243,6 +245,22 @@ Notifications are best-effort and never change an operation's exit status. Gener
 | `format`       | enum      | `custom`       | `custom` or `plain` (PostgreSQL only)          |
 | `compression`  | enum      | `gzip`         | `gzip` or `none`                               |
 | `retention`    | object    | global default | Override global retention for this target       |
+
+For SQLite, `database` is the database file path inside the container and `sqlite3` must be installed there. Lutra uses SQLite's `.backup` command for a consistent online copy. A destructive restore replaces that file; stop the application container first to prevent open handles or immediate writes.
+
+### Docker Volume Target Settings
+
+Named volumes are configured under `volumes:`:
+
+```yaml
+volumes:
+  - name: app-uploads
+    volume: app_uploads
+    schedule: "*-*-* 03:15:00"
+    compression: gzip
+```
+
+Lutra starts a temporary Alpine container with the volume mounted read-only and creates a tar archive through the normal checksum, manifest, history, health, and retention pipeline. Restore deletes the destination volume's existing contents, so stop all containers using it before running `lutra restore`.
 
 ### File Target Settings
 
@@ -412,6 +430,7 @@ Behavior per database:
 | PostgreSQL | Custom format: `pg_restore --clean --if-exists`. Plain format: the database is dropped and recreated, then loaded with `psql`. |
 | SQL Server | The `.bak` is streamed into the container, then `RESTORE DATABASE ... WITH REPLACE, RECOVERY`. |
 | MongoDB    | `mongorestore --archive --drop`.                                                   |
+| SQLite     | Streams the consistent copy over the configured database file; stop the application first. |
 
 For **file targets**, restore extracts the tar archive back to the original locations (or to an alternate directory with `--destination`), overwriting files with the same paths:
 

@@ -58,6 +58,19 @@ public sealed class BackupListCommand : AsyncCommand<GlobalSettings>
                 AnsiConsole.Write(filesTable);
             }
 
+            if (config.Volumes.Count > 0)
+            {
+                AnsiConsole.MarkupLine("\n[bold]Docker volume targets[/]");
+                var volumeTable = new Table();
+                volumeTable.AddColumn("Name");
+                volumeTable.AddColumn("Volume");
+                volumeTable.AddColumn("Schedule");
+                volumeTable.AddColumn("Compression");
+                foreach (var volume in config.Volumes)
+                    volumeTable.AddRow(volume.Name.EscapeMarkup(), volume.Volume.EscapeMarkup(), volume.Schedule.EscapeMarkup(), volume.Compression.ToString());
+                AnsiConsole.Write(volumeTable);
+            }
+
             return Task.FromResult(0);
         }
         catch (ConfigurationException ex)

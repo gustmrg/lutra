@@ -64,6 +64,7 @@ public sealed class RestoreCommand : AsyncCommand<RestoreSettings>
             {
                 DatabaseTarget databaseTarget => await RestoreDatabaseAsync(config, orchestrator, databaseTarget, backupFile, settings),
                 FileTarget fileTarget => await RestoreFilesAsync(config, orchestrator, fileTarget, backupFile, settings),
+                VolumeTarget volumeTarget => await RestoreVolumeAsync(config, orchestrator, volumeTarget, backupFile, settings),
                 _ => 1
             };
         }
@@ -153,6 +154,35 @@ public sealed class RestoreCommand : AsyncCommand<RestoreSettings>
         }
 
         AnsiConsole.MarkupLine($"[red]Restore failed:[/] {result.ErrorMessage?.EscapeMarkup()}");
+        return 1;
+    }
+
+    private static async Task<int> RestoreVolumeAsync(
+        BackupConfig config,
+        Core.Restore.RestoreOrchestrator orchestrator,
+        VolumeTarget target,
+        string backupFile,
+        RestoreSettings settings)
+    {
+        AnsiConsole.Write(new Panel(
+                $"Volume: [bold]{target.Volume.EscapeMarkup()}[/]\n" +
+                $"Backup: [bold]{Path.GetFileName(backupFile).EscapeMarkup()}[/]")
+            .Header("[red] DESTRUCTIVE VOLUME RESTORE [/]")
+            .Border(BoxBorder.Heavy)
+            .BorderStyle(Color.Red));
+        AnsiConsole.MarkupLine("[red]Stop every container using this volume. Existing volume contents will be deleted.[/]");
+        if (!Confirm(settings.Force))
+            return 1;
+
+        var result = await AnsiConsole.Status().StartAsync($"Restoring {target.Name}...", _ =>
+            orchestrator.RestoreVolumeAsync(target, backupFile));
+        await NotifyRestoreAsync(config, target.Name, result.Success);
+        if (result.Success)
+        {
+            AnsiConsole.MarkupLine($"[green]Volume restore completed[/] in {result.Duration.TotalSeconds:0.0}s.");
+            return 0;
+        }
+        AnsiConsole.MarkupLine($"[red]Volume restore failed:[/] {result.ErrorMessage?.EscapeMarkup()}");
         return 1;
     }
 

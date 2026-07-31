@@ -117,6 +117,22 @@ databases:
 #     - crontabs
 #     - firewall
 
+# SQLite databases use the path inside the configured container.
+# databases may also include:
+#   - name: app-sqlite
+#     type: sqlite
+#     container: app-container
+#     database: /data/app.db
+#     schedule: "*-*-* 02:30:00"
+#     compression: gzip
+
+# Named Docker volumes are archived with a temporary Alpine helper container.
+# volumes:
+#   - name: app-uploads
+#     volume: app_uploads
+#     schedule: "*-*-* 03:15:00"
+#     compression: gzip
+
 # File targets back up configuration files as tar archives.
 # Use them for compose files, .env files, reverse proxy configs, and certificates.
 # Do NOT use them for system state (packages, users, firewall) — recreate that instead.

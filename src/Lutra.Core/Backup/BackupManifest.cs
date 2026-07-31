@@ -33,6 +33,10 @@ public sealed class BackupManifest
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public IReadOnlyList<string>? Paths { get; init; }
 
+    [JsonPropertyName("volume")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Volume { get; init; }
+
     [JsonPropertyName("backup_file_name")]
     public required string BackupFileName { get; init; }
 

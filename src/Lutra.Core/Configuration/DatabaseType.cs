@@ -18,5 +18,6 @@ public enum DatabaseType
     /// <summary>
     /// MongoDB database. Uses <c>mongodump</c> for backups.
     /// </summary>
-    MongoDb
+    MongoDb,
+    SQLite
 }

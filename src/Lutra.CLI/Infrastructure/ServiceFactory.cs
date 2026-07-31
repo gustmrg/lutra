@@ -31,7 +31,8 @@ internal static class ServiceFactory
         [
             new PostgresBackupProvider(),
             new SqlServerBackupProvider(),
-            new MongoBackupProvider()
+            new MongoBackupProvider(),
+            new SqliteBackupProvider()
         ];
         return new BackupOrchestrator(providers, processExecutor, historyService, config);
     }
@@ -44,7 +45,8 @@ internal static class ServiceFactory
         [
             new PostgresRestoreProvider(),
             new SqlServerRestoreProvider(),
-            new MongoRestoreProvider()
+            new MongoRestoreProvider(),
+            new SqliteRestoreProvider()
         ];
         return new RestoreOrchestrator(providers, processExecutor, historyService, config);
     }
@@ -111,7 +113,7 @@ internal static class ServiceFactory
         if (target is not DatabaseTarget databaseTarget)
         {
             throw new ConfigurationException(
-                $"Target '{targetName}' is a file target; this command requires a database target.");
+                $"Target '{targetName}' is not a database target; this command requires a database target.");
         }
 
         return databaseTarget;

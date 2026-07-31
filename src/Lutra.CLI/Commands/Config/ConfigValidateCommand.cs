@@ -31,6 +31,10 @@ public sealed class ConfigValidateCommand : AsyncCommand<ConfigValidateSettings>
                 AnsiConsole.MarkupLine($"    - {ft.Name.EscapeMarkup()} ({ft.Paths.Count} path(s))");
             }
 
+            AnsiConsole.MarkupLine($"  Volume targets: [blue]{config.Volumes.Count}[/]");
+            foreach (var volume in config.Volumes)
+                AnsiConsole.MarkupLine($"    - {volume.Name.EscapeMarkup()} ({volume.Volume.EscapeMarkup()})");
+
             if (config.Inventory is { } inventory)
             {
                 var collectors = inventory.Collectors is null ? "all collectors" : string.Join(", ", inventory.Collectors);
@@ -121,6 +125,19 @@ public sealed class ConfigValidateCommand : AsyncCommand<ConfigValidateSettings>
         {
             if (!await ValidateScheduleAsync(ft))
                 failed = true;
+        }
+
+        foreach (var volume in config.Volumes)
+        {
+            if (!await ValidateScheduleAsync(volume))
+                failed = true;
+            if (!await CommandSucceedsAsync("docker", ["volume", "inspect", volume.Volume]))
+            {
+                AnsiConsole.MarkupLine($"[red]{volume.Name.EscapeMarkup()}:[/] Docker volume '{volume.Volume.EscapeMarkup()}' does not exist.");
+                failed = true;
+            }
+            else
+                AnsiConsole.MarkupLine($"  {volume.Name.EscapeMarkup()}: [green]Docker volume exists[/]");
         }
 
         if (config.Inventory is { Enabled: true } inventory
@@ -262,6 +279,7 @@ public sealed class ConfigValidateCommand : AsyncCommand<ConfigValidateSettings>
         DatabaseType.PostgreSql => "pg_dump",
         DatabaseType.MongoDb => "mongodump",
         DatabaseType.SqlServer => "/opt/mssql-tools18/bin/sqlcmd",
+        DatabaseType.SQLite => "sqlite3",
         _ => throw new ArgumentOutOfRangeException(nameof(type), type, null)
     };
 
