@@ -31,6 +31,16 @@ public sealed class RestoreCommand : AsyncCommand<RestoreSettings>
                 }
             }
 
+            if (settings.Chain.Length > 0)
+            {
+                if (target is not DatabaseTarget { Type: DatabaseType.SqlServer } sqlServer)
+                    throw new ConfigurationException("--chain is supported only for SQL Server database targets.");
+                var chain = settings.Chain
+                    .Select(file => BackupFileSelection.ResolveBackupFilePath(config, target, file))
+                    .ToList();
+                return await RestoreSqlServerChainAsync(config, sqlServer, chain, settings);
+            }
+
             var historyService = ServiceFactory.CreateHistoryService(config);
 
             string backupFile;
@@ -78,6 +88,34 @@ public sealed class RestoreCommand : AsyncCommand<RestoreSettings>
             AnsiConsole.MarkupLine($"[red]Error:[/] {ex.Message.EscapeMarkup()}");
             return 1;
         }
+    }
+
+    private static async Task<int> RestoreSqlServerChainAsync(
+        BackupConfig config,
+        DatabaseTarget target,
+        IReadOnlyList<string> chain,
+        RestoreSettings settings)
+    {
+        AnsiConsole.Write(new Panel(
+                $"Database: [bold]{target.Database.EscapeMarkup()}[/]\n" +
+                $"Chain:\n{string.Join("\n", chain.Select(path => "  " + Path.GetFileName(path))).EscapeMarkup()}")
+            .Header("[red] SQL SERVER CHAIN RESTORE [/]")
+            .Border(BoxBorder.Heavy)
+            .BorderStyle(Color.Red));
+        AnsiConsole.MarkupLine("[red]The database will remain unavailable until the final chain file is restored with recovery.[/]");
+        if (!Confirm(settings.Force))
+            return 1;
+
+        var result = await AnsiConsole.Status().StartAsync("Restoring SQL Server chain...", _ =>
+            ServiceFactory.CreateRestoreOrchestrator(config).RestoreSqlServerChainAsync(target, chain));
+        await NotifyRestoreAsync(config, target.Name, result.Success);
+        if (result.Success)
+        {
+            AnsiConsole.MarkupLine($"[green]Restore chain completed[/] in {result.Duration.TotalSeconds:0.0}s.");
+            return 0;
+        }
+        AnsiConsole.MarkupLine($"[red]Restore chain failed:[/] {result.ErrorMessage?.EscapeMarkup()}");
+        return 1;
     }
 
     private static async Task<int> RestoreDatabaseAsync(

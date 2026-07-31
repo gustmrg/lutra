@@ -257,6 +257,9 @@ Notifications are best-effort and never change an operation's exit status. Gener
 | `password_env` | string    | —              | Environment variable name holding the password |
 | `schedule`     | string    | `"*-*-* 03:00:00"` | Systemd calendar expression for timer generation |
 | `verify_schedule` | string | — | Optional systemd schedule for non-destructive restore drills |
+| `postgres_wal_archive_path` | string | — | Host directory populated by PostgreSQL `archive_command` |
+| `sql_server_backup_kind` | enum | `full` | SQL Server `full`, `differential`, or `log` backup |
+| `mongo_oplog` | bool | `false` | Replica-set-wide `mongodump --oplog` archive |
 | `format`       | enum      | `custom`       | `custom` or `plain` (PostgreSQL only)          |
 | `compression`  | enum      | `gzip`         | `gzip` or `none`                               |
 | `retention`    | object    | global default | Override global retention for this target       |
@@ -436,6 +439,11 @@ Restores a backup into the configured database, **replacing its current contents
 
 ```bash
 lutra restore --target my-postgres --file /var/backups/lutra/my-postgres/my-postgres_2026-02-08_030000_a1b2c3d4e5f6.dump.gz
+
+# SQL Server chain: repeat --chain in restore order
+lutra restore --target finance-db --force \
+  --chain full.bak.gz --chain latest.diff.bak.gz \
+  --chain log-001.log.bak.gz --chain log-002.log.bak.gz
 ```
 
 Behavior per database:
@@ -471,9 +479,13 @@ Per database specifics:
 
 `verify` exits with code `0` on success and `1` on failure. Set `verify_schedule` on a database target and run `sudo lutra schedule install` to install a dedicated automated restore-drill timer.
 
-### Advanced recovery boundaries
+### Advanced recovery
 
-Lutra's default dump workflow intentionally remains simple. For PostgreSQL point-in-time recovery and WAL retention, use pgBackRest or WAL-G and document that repository in the rebuild runbook; copying a live `pg_wal` directory is not a valid backup. For SQL Server differential/log chains, use SQL Server Agent or a specialist maintenance solution until chain-aware restore is required. For MongoDB replica-set oplog consistency and sharded clusters, use MongoDB's supported coordinated backup tooling. Lutra's `config validate --preflight` confirms that each configured container and dump tool are available; test restores are the compatibility check that matters across database versions.
+- **PostgreSQL WAL/PITR:** configure PostgreSQL `archive_command` to copy completed WAL segments into a host directory, then set `postgres_wal_archive_path`. Lutra archives that directory after each successful base dump as a separate `<target>-wal` artifact with checksums, manifests, encryption, retention, sync, and bundle coverage. Never point this at live `pg_wal`; for automated PITR orchestration and repository pruning, pgBackRest or WAL-G remains preferable.
+- **SQL Server chains:** set `sql_server_backup_kind` to create full, differential, or transaction-log artifacts. Restore an ordered chain with repeated `--chain`; Lutra validates checksums and ordering, restores intermediate files with `NORECOVERY`, and applies `RECOVERY` only to the final file. Separate scheduled targets can use different names while referencing the same database.
+- **MongoDB oplog:** `mongo_oplog: true` creates a replica-set-wide `mongodump --oplog` archive and restores it with `--oplogReplay`. Namespace-remapped test restores are intentionally rejected; verify these in a disposable replica set. Sharded clusters still require MongoDB's coordinated backup tooling.
+
+`config validate --preflight` reports the installed dump-tool version for compatibility troubleshooting. Scheduled disposable restore drills remain the strongest practical cross-version compatibility check.
 
 ## Project Structure
 

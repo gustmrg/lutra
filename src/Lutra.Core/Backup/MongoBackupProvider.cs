@@ -8,11 +8,14 @@ public class MongoBackupProvider : IBackupProvider
 
     public DockerExecCommand BuildDumpCommand(DatabaseTarget target, string backupId)
     {
-        var args = new List<string>
+        var args = new List<string> { "--archive" }; // Write to stdout as one archive.
+        if (target.MongoOplog)
+            args.Add("--oplog");
+        else
         {
-            "--archive", // Write to stdout as a single archive stream
-            "--db", target.Database
-        };
+            args.Add("--db");
+            args.Add(target.Database);
+        }
 
         if (target.Username is not null)
         {

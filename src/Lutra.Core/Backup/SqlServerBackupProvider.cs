@@ -21,7 +21,16 @@ public class SqlServerBackupProvider : IBackupProvider
         var containerBackupPath = GetContainerBackupPath(target, backupId)
             ?? throw new InvalidOperationException("SQL Server backup path could not be generated.");
 
-        var backupSql = $"BACKUP DATABASE [{target.Database}] TO DISK = N'{containerBackupPath}' WITH FORMAT, INIT";
+        var backupSql = target.SqlServerBackupKind switch
+        {
+            SqlServerBackupKind.Full =>
+                $"BACKUP DATABASE [{target.Database}] TO DISK = N'{containerBackupPath}' WITH FORMAT, INIT, CHECKSUM",
+            SqlServerBackupKind.Differential =>
+                $"BACKUP DATABASE [{target.Database}] TO DISK = N'{containerBackupPath}' WITH DIFFERENTIAL, FORMAT, INIT, CHECKSUM",
+            SqlServerBackupKind.Log =>
+                $"BACKUP LOG [{target.Database}] TO DISK = N'{containerBackupPath}' WITH FORMAT, INIT, CHECKSUM",
+            _ => throw new ArgumentOutOfRangeException()
+        };
 
         var args = new List<string>
         {
@@ -50,5 +59,11 @@ public class SqlServerBackupProvider : IBackupProvider
         );
     }
 
-    public string GetFileExtension(DatabaseTarget target) => ".bak";
+    public string GetFileExtension(DatabaseTarget target) => target.SqlServerBackupKind switch
+    {
+        SqlServerBackupKind.Full => ".bak",
+        SqlServerBackupKind.Differential => ".diff.bak",
+        SqlServerBackupKind.Log => ".log.bak",
+        _ => ".bak"
+    };
 }

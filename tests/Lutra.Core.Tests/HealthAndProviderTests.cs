@@ -50,6 +50,41 @@ public sealed class HealthAndProviderTests
         }
     }
 
+    [Fact]
+    public void SqlServerProvider_GeneratesDifferentialAndLogCommands()
+    {
+        var differential = new DatabaseTarget
+        {
+            Name = "sql-diff", Type = DatabaseType.SqlServer, Container = "sql",
+            Database = "app", Username = "sa", SqlServerBackupKind = SqlServerBackupKind.Differential
+        };
+        var log = new DatabaseTarget
+        {
+            Name = "sql-log", Type = DatabaseType.SqlServer, Container = "sql",
+            Database = "app", Username = "sa", SqlServerBackupKind = SqlServerBackupKind.Log
+        };
+        var provider = new SqlServerBackupProvider();
+
+        Assert.Contains("DIFFERENTIAL", provider.BuildDumpCommand(differential, "one").Arguments.Last());
+        Assert.Contains("BACKUP LOG", provider.BuildDumpCommand(log, "two").Arguments.Last());
+        Assert.Equal(".diff.bak", provider.GetFileExtension(differential));
+        Assert.Equal(".log.bak", provider.GetFileExtension(log));
+    }
+
+    [Fact]
+    public void MongoProvider_AddsOplogWithoutDatabaseFilter()
+    {
+        var target = new DatabaseTarget
+        {
+            Name = "mongo", Type = DatabaseType.MongoDb, Container = "mongo",
+            Database = "app", MongoOplog = true
+        };
+        var command = new MongoBackupProvider().BuildDumpCommand(target, "id");
+
+        Assert.Contains("--oplog", command.Arguments);
+        Assert.DoesNotContain("--db", command.Arguments);
+    }
+
     private static DatabaseTarget PostgreSqlTarget(string? passwordEnv = null) => new()
     {
         Name = "postgres",

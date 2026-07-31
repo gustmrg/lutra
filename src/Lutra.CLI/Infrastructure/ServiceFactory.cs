@@ -74,7 +74,7 @@ internal static class ServiceFactory
 
     public static BackupArtifactHealthChecker CreateArtifactHealthChecker(BackupConfig config)
     {
-        return new BackupArtifactHealthChecker(config);
+        return new BackupArtifactHealthChecker(config, CreateHistoryService(config));
     }
 
     public static NotificationService? CreateNotificationService(BackupConfig config)

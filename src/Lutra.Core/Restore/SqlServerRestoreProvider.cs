@@ -122,6 +122,26 @@ public class SqlServerRestoreProvider : IRestoreProvider
             EnvironmentVariables: BuildEnvVars(target));
     }
 
+    public DockerExecCommand BuildChainRestoreCommand(
+        DatabaseTarget target,
+        string containerFilePath,
+        SqlServerBackupKind kind,
+        bool first,
+        bool last)
+    {
+        var operation = kind == SqlServerBackupKind.Log ? "RESTORE LOG" : "RESTORE DATABASE";
+        var options = new List<string>();
+        if (first)
+            options.Add("REPLACE");
+        options.Add(last ? "RECOVERY" : "NORECOVERY");
+        var sql = $"{operation} {Bracket(target.Database)} FROM DISK = N'{EscapeSql(containerFilePath)}' WITH {string.Join(", ", options)}";
+        var args = BaseArgs(target);
+        args.Add("-b");
+        args.Add("-Q");
+        args.Add(sql);
+        return new DockerExecCommand(target.Container, SqlcmdPath, args.ToArray(), BuildEnvVars(target));
+    }
+
     public DockerExecCommand BuildValidationCommand(DatabaseTarget target, string database)
     {
         var args = BaseArgs(target);

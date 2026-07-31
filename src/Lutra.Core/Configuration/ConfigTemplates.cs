@@ -88,6 +88,7 @@ databases:
     password_env: POSTGRES_PASSWORD  # Reference to env var in .env file
     schedule: "*-*-* 03:00:00"      # Daily at 3 AM (systemd calendar expression)
     # verify_schedule: "Sun *-*-* 05:00:00" # Optional restore drill timer
+    # postgres_wal_archive_path: /srv/postgres-wal # archive_command output on host
     format: custom                   # custom (.dump) or plain (.sql)
     compression: gzip
 
@@ -98,6 +99,7 @@ databases:
   #   database: mydb
   #   schedule: "Sun *-*-* 04:00:00" # Weekly on Sundays at 4 AM
   #   compression: gzip
+  #   # mongo_oplog: true             # replica-set-wide oplog-consistent archive
 
   # SQL Server Example
   # - name: example-sqlserver
@@ -108,6 +110,7 @@ databases:
   #   password_env: SQLSERVER_PASSWORD
   #   schedule: "*-*-* 02:00:00"    # Daily at 2 AM
   #   compression: gzip
+  #   # sql_server_backup_kind: full  # full, differential, or log
 
 # Optional server inventory snapshots (restoration aid, not system-state backup).
 # Collector failures are recorded in the snapshot and never fail a backup run.

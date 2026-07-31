@@ -106,4 +106,13 @@ public class DatabaseTarget : IBackupTarget
     public RetentionPolicy? Retention { get; init; }
 
     public EncryptionConfig? Encryption { get; init; }
+
+    /// <summary>SQL Server full, differential, or transaction-log backup mode.</summary>
+    public SqlServerBackupKind SqlServerBackupKind { get; init; } = SqlServerBackupKind.Full;
+
+    /// <summary>MongoDB replica-set backup with mongodump --oplog.</summary>
+    public bool MongoOplog { get; init; }
+
+    /// <summary>Host path containing PostgreSQL WAL files produced by archive_command.</summary>
+    public string? PostgresWalArchivePath { get; init; }
 }

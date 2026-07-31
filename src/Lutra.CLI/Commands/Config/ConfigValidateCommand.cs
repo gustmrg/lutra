@@ -118,6 +118,17 @@ public sealed class ConfigValidateCommand : AsyncCommand<ConfigValidateSettings>
             else
             {
                 AnsiConsole.MarkupLine($"  {db.Name.EscapeMarkup()}: [green]container and dump tool available[/]");
+                var versionArgs = db.Type switch
+                {
+                    DatabaseType.PostgreSql => new[] { "exec", db.Container, "pg_dump", "--version" },
+                    DatabaseType.MongoDb => new[] { "exec", db.Container, "mongodump", "--version" },
+                    DatabaseType.SqlServer => new[] { "exec", db.Container, "/opt/mssql-tools18/bin/sqlcmd", "-?" },
+                    DatabaseType.SQLite => new[] { "exec", db.Container, "sqlite3", "--version" },
+                    _ => []
+                };
+                var version = await CommandOutputAsync("docker", versionArgs);
+                if (!string.IsNullOrWhiteSpace(version))
+                    AnsiConsole.MarkupLine($"    Tool version: [grey]{version.Split('\n', StringSplitOptions.RemoveEmptyEntries)[0].Trim().EscapeMarkup()}[/]");
             }
         }
 
@@ -173,6 +184,16 @@ public sealed class ConfigValidateCommand : AsyncCommand<ConfigValidateSettings>
     private static bool CheckFileTargets(BackupConfig config)
     {
         var valid = true;
+
+        foreach (var database in config.Databases.Where(database => database.PostgresWalArchivePath is not null))
+        {
+            var path = database.PostgresWalArchivePath!;
+            if (!Directory.Exists(path) || !IsReadable(path))
+            {
+                AnsiConsole.MarkupLine($"[red]{database.Name.EscapeMarkup()}:[/] PostgreSQL WAL archive path is missing or unreadable: {path.EscapeMarkup()}");
+                valid = false;
+            }
+        }
 
         foreach (var ft in config.Files)
         {
@@ -300,6 +321,36 @@ public sealed class ConfigValidateCommand : AsyncCommand<ConfigValidateSettings>
     private static async Task<bool> CommandExistsAsync(string command)
     {
         return await CommandSucceedsAsync("sh", ["-lc", $"command -v {command} >/dev/null 2>&1"]);
+    }
+
+    private static async Task<string?> CommandOutputAsync(string fileName, IReadOnlyList<string> args)
+    {
+        try
+        {
+            var psi = new ProcessStartInfo
+            {
+                FileName = fileName,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false
+            };
+            foreach (var arg in args)
+                psi.ArgumentList.Add(arg);
+            using var process = Process.Start(psi);
+            if (process is null)
+                return null;
+            var stdout = process.StandardOutput.ReadToEndAsync();
+            var stderr = process.StandardError.ReadToEndAsync();
+            await process.WaitForExitAsync();
+            var output = await stdout;
+            if (string.IsNullOrWhiteSpace(output))
+                output = await stderr;
+            return process.ExitCode == 0 ? output.Trim() : null;
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     private static async Task<bool> CommandSucceedsAsync(string fileName, IReadOnlyList<string> args)

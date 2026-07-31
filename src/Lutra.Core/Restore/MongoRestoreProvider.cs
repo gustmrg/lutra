@@ -16,7 +16,15 @@ public class MongoRestoreProvider : IRestoreProvider
     {
         var args = new List<string> { "--archive" };
 
-        if (destinationDatabase.Equals(target.Database, StringComparison.Ordinal))
+        if (target.MongoOplog)
+        {
+            if (!destinationDatabase.Equals(target.Database, StringComparison.Ordinal))
+                throw new NotSupportedException(
+                    "Oplog archives cannot be namespace-remapped for an in-place test restore. Verify them in a disposable replica set.");
+            args.Add("--drop");
+            args.Add("--oplogReplay");
+        }
+        else if (destinationDatabase.Equals(target.Database, StringComparison.Ordinal))
         {
             // Destructive restore: drop existing collections before restoring.
             args.Add("--db");

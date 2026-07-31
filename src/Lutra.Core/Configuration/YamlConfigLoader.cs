@@ -15,6 +15,7 @@ public class YamlConfigLoader : IConfigLoader
         .WithTypeConverter(new CaseInsensitiveEnumConverter<DatabaseType>())
         .WithTypeConverter(new CaseInsensitiveEnumConverter<CompressionType>())
         .WithTypeConverter(new CaseInsensitiveEnumConverter<RetentionMode>())
+        .WithTypeConverter(new CaseInsensitiveEnumConverter<SqlServerBackupKind>())
         .Build();
 
     /// <inheritdoc />
@@ -125,17 +126,30 @@ public class YamlConfigLoader : IConfigLoader
                     if (string.IsNullOrWhiteSpace(db.Username))
                         throw new ConfigurationException($"{prefix} ({db.Name}): 'username' is required for PostgreSQL.");
                     ValidatePostgresFormat(prefix, db);
+                    if (db.MongoOplog || db.SqlServerBackupKind != SqlServerBackupKind.Full)
+                        throw new ConfigurationException($"{prefix} ({db.Name}): MongoDB/SQL Server recovery options do not apply to PostgreSQL.");
+                    if (db.PostgresWalArchivePath is not null && !targetNames.Add(db.Name + "-wal"))
+                        throw new ConfigurationException($"{prefix} ({db.Name}): generated WAL target name '{db.Name}-wal' conflicts with another target.");
                     break;
                 case DatabaseType.SqlServer:
                     if (string.IsNullOrWhiteSpace(db.Username))
                         throw new ConfigurationException($"{prefix} ({db.Name}): 'username' is required for SQL Server.");
                     if (!string.IsNullOrWhiteSpace(db.Format))
                         throw new ConfigurationException($"{prefix} ({db.Name}): 'format' is only supported for PostgreSQL.");
+                    if (db.MongoOplog || db.PostgresWalArchivePath is not null)
+                        throw new ConfigurationException($"{prefix} ({db.Name}): PostgreSQL/MongoDB recovery options do not apply to SQL Server.");
                     break;
                 case DatabaseType.MongoDb:
+                    if (!string.IsNullOrWhiteSpace(db.Format))
+                        throw new ConfigurationException($"{prefix} ({db.Name}): 'format' is only supported for PostgreSQL.");
+                    if (db.PostgresWalArchivePath is not null || db.SqlServerBackupKind != SqlServerBackupKind.Full)
+                        throw new ConfigurationException($"{prefix} ({db.Name}): PostgreSQL/SQL Server recovery options do not apply to MongoDB.");
+                    break;
                 case DatabaseType.SQLite:
                     if (!string.IsNullOrWhiteSpace(db.Format))
                         throw new ConfigurationException($"{prefix} ({db.Name}): 'format' is only supported for PostgreSQL.");
+                    if (db.MongoOplog || db.PostgresWalArchivePath is not null || db.SqlServerBackupKind != SqlServerBackupKind.Full)
+                        throw new ConfigurationException($"{prefix} ({db.Name}): advanced recovery options do not apply to SQLite.");
                     break;
                 default:
                     throw new ConfigurationException($"{prefix} ({db.Name}): unsupported database type '{db.Type}'.");

@@ -22,10 +22,25 @@ public sealed class BackupReconciliationService
         string? targetName = null,
         CancellationToken cancellationToken = default)
     {
+        var configuredTargets = _config.AllTargets().ToList();
+        var walTargets = _config.Databases
+            .Where(database => database.PostgresWalArchivePath is not null)
+            .Select(database => (IBackupTarget)new RecoveryArtifactTarget
+            {
+                Name = database.Name + "-wal",
+                Schedule = database.Schedule,
+                Compression = database.Compression,
+                Retention = database.Retention,
+                Encryption = database.Encryption
+            })
+            .ToList();
         var targets = targetName is null
-            ? _config.AllTargets().ToList()
-            : _config.AllTargets()
+            ? configuredTargets.Concat(walTargets).ToList()
+            : configuredTargets
                 .Where(target => target.Name.Equals(targetName, StringComparison.OrdinalIgnoreCase))
+                .Concat(_config.Databases.Any(database => database.Name.Equals(targetName, StringComparison.OrdinalIgnoreCase))
+                    ? walTargets.Where(target => target.Name.Equals(targetName + "-wal", StringComparison.OrdinalIgnoreCase))
+                    : Enumerable.Empty<IBackupTarget>())
                 .ToList();
 
         if (targetName is not null && targets.Count == 0)

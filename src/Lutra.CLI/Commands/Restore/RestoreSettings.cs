@@ -21,4 +21,8 @@ public class RestoreSettings : GlobalSettings
     [CommandOption("--destination <DIR>")]
     [Description("File targets only: directory to extract the archive into. Defaults to / (original locations).")]
     public string? Destination { get; set; }
+
+    [CommandOption("--chain <PATH>")]
+    [Description("SQL Server only: ordered restore-chain file. Repeat for full, differential, and log files.")]
+    public string[] Chain { get; set; } = [];
 }

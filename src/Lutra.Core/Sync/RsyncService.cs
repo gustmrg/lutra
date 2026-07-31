@@ -43,6 +43,8 @@ public sealed class RsyncService
         var startedAt = DateTime.UtcNow;
         var source = _config.BackupDirectory;
         var destination = sync.DestinationPath;
+        string? walSource = null;
+        string? walDestination = null;
 
         if (targetName is not null)
         {
@@ -53,6 +55,11 @@ public sealed class RsyncService
 
             source = Path.Combine(source, target.Name);
             destination = CombineRemotePath(destination, target.Name);
+            if (target is DatabaseTarget { Type: DatabaseType.PostgreSql, PostgresWalArchivePath: not null })
+            {
+                walSource = Path.Combine(_config.BackupDirectory, target.Name + "-wal");
+                walDestination = CombineRemotePath(sync.DestinationPath, target.Name + "-wal");
+            }
         }
 
         if (!Directory.Exists(source))
@@ -70,13 +77,21 @@ public sealed class RsyncService
         args.Add($"{sync.User}@{sync.Host}:{destination.TrimEnd('/')}/");
 
         var process = await RunAsync("rsync", args, cancellationToken);
-        var result = new SyncResult(
-            process.ExitCode == 0,
-            dryRun,
-            targetName,
-            process.StdOut,
-            process.ExitCode == 0 ? null : SafeError(process),
-            startedAt);
+        var success = process.ExitCode == 0;
+        var output = process.StdOut;
+        var error = success ? null : SafeError(process);
+        if (success && walSource is not null && Directory.Exists(walSource))
+        {
+            var walArgs = args.ToList();
+            walArgs[^2] = walSource.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+            walArgs[^1] = $"{sync.User}@{sync.Host}:{walDestination!.TrimEnd('/')}/";
+            var walProcess = await RunAsync("rsync", walArgs, cancellationToken);
+            success = walProcess.ExitCode == 0;
+            output = output + walProcess.StdOut;
+            if (!success)
+                error = SafeError(walProcess);
+        }
+        var result = new SyncResult(success, dryRun, targetName, output, error, startedAt);
 
         if (!dryRun)
         {

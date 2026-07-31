@@ -62,6 +62,19 @@ public sealed class DisasterRecoveryBundleService
                 included++;
             }
 
+            foreach (var database in _config.Databases.Where(database => database.PostgresWalArchivePath is not null))
+            {
+                var walTarget = database.Name + "-wal";
+                var latestWal = records.FirstOrDefault(record => record.TargetName == walTarget
+                    && record.Success && record.RecordType is null && !string.IsNullOrWhiteSpace(record.FileName));
+                if (latestWal is null)
+                    throw new InvalidOperationException($"PostgreSQL target '{database.Name}' has no WAL archive backup to bundle.");
+                var source = Path.Combine(_config.BackupDirectory, walTarget, latestWal.FileName);
+                if (!File.Exists(source))
+                    throw new FileNotFoundException($"Latest WAL archive for '{database.Name}' is missing: {source}");
+                CopyArtifact(source, Path.Combine(staging, "backups", walTarget));
+            }
+
             var inventoryDirectory = Path.Combine(_config.BackupDirectory, "inventory");
             var inventory = Directory.Exists(inventoryDirectory)
                 ? Directory.GetFiles(inventoryDirectory, "inventory_*.md").OrderByDescending(File.GetLastWriteTimeUtc).FirstOrDefault()
@@ -168,7 +181,11 @@ public sealed class DisasterRecoveryBundleService
         foreach (var target in _config.Volumes)
             builder.AppendLine($"- Volume `{target.Name}`: stop consumers, then `lutra restore --target {target.Name} --file <artifact> --force`");
         foreach (var target in _config.Databases)
+        {
             builder.AppendLine($"- Database `{target.Name}`: start `{target.Container}`, then `lutra restore --target {target.Name} --file <artifact> --force`");
+            if (target.PostgresWalArchivePath is not null)
+                builder.AppendLine($"  - WAL archive `{target.Name}-wal` is included for PITR; restore it using the PostgreSQL recovery configuration in your runbook.");
+        }
         builder.AppendLine();
         builder.AppendLine(hasInventory
             ? "Review `inventory/` for the captured package, service, Docker, cron, and firewall inventory."

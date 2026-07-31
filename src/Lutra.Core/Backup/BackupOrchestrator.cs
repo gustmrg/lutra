@@ -69,7 +69,9 @@ public class BackupOrchestrator
                 FileSizeBytes = fileSize,
                 Sha256 = sha256,
                 Compression = target.Compression,
-                Format = target.Format,
+                Format = target.Type == DatabaseType.SqlServer
+                    ? target.SqlServerBackupKind.ToString().ToLowerInvariant()
+                    : target.MongoOplog ? "oplog" : target.Format,
                 StartedAt = startedAt,
                 CompletedAt = DateTime.UtcNow,
                 DurationMs = (long)duration.TotalMilliseconds,
@@ -98,6 +100,45 @@ public class BackupOrchestrator
                 FileSizeBytes = fileSize,
                 Sha256 = sha256,
                 Compression = target.Compression,
+                StartedAt = startedAt,
+                CompletedAt = DateTime.UtcNow,
+                DurationMs = (long)duration.TotalMilliseconds,
+                LutraVersion = GetVersion(),
+                Success = true,
+                Encrypted = GetEncryption(target) is not null,
+                EncryptionRecipientFingerprint = GetRecipientFingerprint(target)
+            },
+            cancellationToken);
+    }
+
+    public async Task<BackupResult> BackupPostgresWalAsync(
+        DatabaseTarget databaseTarget,
+        CancellationToken cancellationToken = default)
+    {
+        if (databaseTarget.Type != DatabaseType.PostgreSql
+            || string.IsNullOrWhiteSpace(databaseTarget.PostgresWalArchivePath))
+            throw new ConfigurationException($"Target '{databaseTarget.Name}' has no PostgreSQL WAL archive path configured.");
+
+        var target = CreateWalTarget(databaseTarget);
+        return await RunBackupAsync(
+            target,
+            ".tar",
+            target.Compression,
+            (tempFilePath, _, ct) => FileArchive.CreateAsync(
+                [databaseTarget.PostgresWalArchivePath], [], tempFilePath, target.Compression, ct),
+            (fileName, fileSize, sha256, startedAt, duration) => new BackupManifest
+            {
+                TargetName = target.Name,
+                TargetType = "postgres-wal",
+                DatabaseType = DatabaseType.PostgreSql,
+                Database = databaseTarget.Database,
+                Container = databaseTarget.Container,
+                Paths = [databaseTarget.PostgresWalArchivePath],
+                BackupFileName = fileName,
+                FileSizeBytes = fileSize,
+                Sha256 = sha256,
+                Compression = target.Compression,
+                Format = "wal-archive",
                 StartedAt = startedAt,
                 CompletedAt = DateTime.UtcNow,
                 DurationMs = (long)duration.TotalMilliseconds,
@@ -143,7 +184,11 @@ public class BackupOrchestrator
 
         foreach (var target in _config.Databases)
         {
-            results.Add(await BackupAsync(target, cancellationToken));
+            var backup = await BackupAsync(target, cancellationToken);
+            results.Add(backup);
+            if (backup.Success && target.Type == DatabaseType.PostgreSql
+                && target.PostgresWalArchivePath is not null)
+                results.Add(await BackupPostgresWalAsync(target, cancellationToken));
         }
 
         foreach (var target in _config.Files)
@@ -161,15 +206,30 @@ public class BackupOrchestrator
 
     public async Task<int> CleanupAsync(IBackupTarget target, CancellationToken cancellationToken = default)
     {
-        return await ApplyRetentionAsync(target, dryRun: false, cancellationToken);
+        var count = await ApplyRetentionAsync(target, dryRun: false, cancellationToken);
+        if (target is DatabaseTarget { Type: DatabaseType.PostgreSql, PostgresWalArchivePath: not null } database)
+            count += await ApplyRetentionAsync(CreateWalTarget(database), dryRun: false, cancellationToken);
+        return count;
     }
 
     public async Task<IReadOnlyList<BackupCleanupCandidate>> PreviewCleanupAsync(
         IBackupTarget target,
         CancellationToken cancellationToken = default)
     {
-        return await GetRetentionCandidatesAsync(target, cancellationToken);
+        var candidates = (await GetRetentionCandidatesAsync(target, cancellationToken)).ToList();
+        if (target is DatabaseTarget { Type: DatabaseType.PostgreSql, PostgresWalArchivePath: not null } database)
+            candidates.AddRange(await GetRetentionCandidatesAsync(CreateWalTarget(database), cancellationToken));
+        return candidates;
     }
+
+    private static RecoveryArtifactTarget CreateWalTarget(DatabaseTarget target) => new()
+    {
+        Name = target.Name + "-wal",
+        Schedule = target.Schedule,
+        Compression = target.Compression,
+        Retention = target.Retention,
+        Encryption = target.Encryption
+    };
 
     private async Task<BackupResult> RunBackupAsync(
         IBackupTarget target,
@@ -459,3 +519,12 @@ public class BackupOrchestrator
 }
 
 public sealed record BackupCleanupCandidate(BackupRecord Record, IReadOnlyList<string> PathsToDelete);
+
+internal sealed class RecoveryArtifactTarget : IBackupTarget
+{
+    public required string Name { get; init; }
+    public required string Schedule { get; init; }
+    public required CompressionType Compression { get; init; }
+    public RetentionPolicy? Retention { get; init; }
+    public EncryptionConfig? Encryption { get; init; }
+}
