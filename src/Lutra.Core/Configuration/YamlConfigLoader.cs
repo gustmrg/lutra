@@ -135,6 +135,17 @@ public class YamlConfigLoader : IConfigLoader
             }
         }
 
+        if (config.Sync is { } sync)
+        {
+            if (!sync.Type.Equals("rsync", StringComparison.OrdinalIgnoreCase))
+                throw new ConfigurationException("sync: only type 'rsync' is supported.");
+            if (string.IsNullOrWhiteSpace(sync.Host) || string.IsNullOrWhiteSpace(sync.User)
+                || string.IsNullOrWhiteSpace(sync.DestinationPath) || string.IsNullOrWhiteSpace(sync.SshKeyPath))
+                throw new ConfigurationException("sync: 'host', 'user', 'destination_path', and 'ssh_key_path' are required.");
+            if (sync.Port is <= 0 or > 65535)
+                throw new ConfigurationException("sync: 'port' must be between 1 and 65535.");
+        }
+
         if (config.Notifications is { } notifications)
         {
             foreach (var url in notifications.Webhooks.Append(notifications.HealthchecksUrl)

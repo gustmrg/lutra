@@ -7,6 +7,7 @@ using Lutra.Core.History;
 using Lutra.Core.Inventory;
 using Lutra.Core.Notifications;
 using Lutra.Core.Restore;
+using Lutra.Core.Sync;
 
 namespace Lutra.CLI.Infrastructure;
 
@@ -65,12 +66,17 @@ internal static class ServiceFactory
 
     public static BackupArtifactHealthChecker CreateArtifactHealthChecker(BackupConfig config)
     {
-        return new BackupArtifactHealthChecker(config.BackupDirectory);
+        return new BackupArtifactHealthChecker(config);
     }
 
     public static NotificationService? CreateNotificationService(BackupConfig config)
     {
         return config.Notifications is null ? null : new NotificationService(config.Notifications);
+    }
+
+    public static RsyncService CreateRsyncService(BackupConfig config)
+    {
+        return new RsyncService(config, CreateHistoryService(config));
     }
 
     public static InventoryService CreateInventoryService(BackupConfig config)

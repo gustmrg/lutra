@@ -47,8 +47,8 @@ public sealed class HistoryCommand : AsyncCommand<TargetSettings>
                     ? "[green]OK[/]"
                     : $"[red]FAILED[/] {record.ErrorMessage?.EscapeMarkup()}";
 
-                var size = record.Success ? FormatBytes(record.FileSizeBytes) : "-";
-                var duration = $"{record.DurationMs}ms";
+                var size = record.Success && record.RecordType is null ? FormatBytes(record.FileSizeBytes) : "-";
+                var duration = record.RecordType == "sync" ? "-" : $"{record.DurationMs}ms";
 
                 table.AddRow(
                     record.TargetName.EscapeMarkup(),

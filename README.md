@@ -14,7 +14,6 @@ It uses `docker exec` to run native dump tools (`pg_dump`, `mongodump`, `sqlcmd`
   - [Automated Setup](#automated-setup)
   - [Manual Setup](#manual-setup)
 - [Commands](#commands)
-  - [Planned Features](#planned-features)
   - [Global Options](#global-options)
 - [Configuration Reference](#configuration-reference)
   - [Global Settings](#global-settings)
@@ -173,6 +172,10 @@ lutra health                                 # Analyze backup health and detect 
 lutra health --target my-postgres            # Analyze health for a specific target
 lutra health --json                          # Machine-readable health report
 lutra inventory                              # Capture a server inventory snapshot
+lutra sync --dry-run                         # Preview an offsite rsync
+lutra sync --target my-postgres              # Sync one target directory
+lutra sync --validate                        # Validate SSH/rsync and remote write access
+lutra sync --delete                          # Explicitly mirror local deletions remotely
 
 # Configuration
 lutra config init                            # Create config directories and template files
@@ -190,12 +193,6 @@ sudo lutra schedule remove --target my-postgres   # Remove timer for specific ta
 
 # Uninstall
 sudo lutra uninstall                         # Remove all Lutra artifacts (config, timers, binary)
-```
-
-### Planned Features
-
-```bash
-lutra sync                                   # Optional Raspberry Pi / rsync workflow
 ```
 
 ### Global Options
@@ -218,6 +215,11 @@ Most commands support these options:
 | `retention.max_age_days` | integer | `30`                 | Delete backups older than N days      |
 | `notifications.webhooks` | list | `[]` | JSON webhook endpoints for operation/health events |
 | `notifications.healthchecks_url` | string | — | Healthchecks.io-compatible ping URL |
+| `sync` | object | — | Optional SSH/rsync offsite destination |
+
+Offsite sync is configured with `sync.type: rsync`, `host`, `user`, `destination_path`, and `ssh_key_path`; optional fields are `port`, `extra_args`, `post_backup`, and `delete`. Remote deletion is disabled unless enabled in configuration or explicitly requested with `--delete`. `--dry-run` is recommended before the first transfer. A successful transfer writes a local `.last-sync.json` marker used by health checks.
+
+For a Raspberry Pi, create a dedicated restricted user, install its public SSH key, and grant write access only to the destination directory. A pull-based timer on the Pi is safer because compromise of the VPS cannot use its credentials to delete the Pi's repository. Restic, Borg, and Kopia remain compatible: point them at Lutra's `backup_directory` instead of enabling `sync`.
 
 Notifications are best-effort and never change an operation's exit status. Generic webhooks receive event, status, summary, target, timestamp, and host fields. A configured Healthchecks.io URL is pinged directly for success and with `/fail` appended for failures. Backup, restore, verification, and unhealthy health-check events are supported.
 
@@ -343,7 +345,7 @@ Lutra runs **on the VPS** alongside your containers. It does not connect to data
 │        │ systemd timer (scheduled)               │
 └────────┼─────────────────────────────────────────┘
          │
-         │ rsync/scp (external, not managed by Lutra)
+         │ rsync (built-in optional sync) or external backup tool
          ▼
    Local Machine / Raspberry Pi
 ```
@@ -511,7 +513,7 @@ Lutra/
 
 ## Downloading Backups to a Local Machine
 
-Lutra intentionally does **not** manage offsite transfers. Backup creation and backup transfer are separate concerns. Use standard tools to pull backups from your VPS:
+Lutra can push backups with its optional `sync` configuration. A pull from the Raspberry Pi or local machine provides stronger isolation and remains fully supported:
 
 ```bash
 # One-time download

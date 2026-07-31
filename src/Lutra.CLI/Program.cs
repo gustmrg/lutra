@@ -6,6 +6,7 @@ using Lutra.CLI.Commands.History;
 using Lutra.CLI.Commands.Inventory;
 using Lutra.CLI.Commands.Restore;
 using Lutra.CLI.Commands.Schedule;
+using Lutra.CLI.Commands.Sync;
 using Lutra.CLI.Commands.Uninstall;
 using Lutra.CLI.Commands.Verify;
 using System.Reflection;
@@ -54,6 +55,9 @@ app.Configure(config =>
 
     config.AddCommand<InventoryCommand>("inventory")
         .WithDescription("Capture a best-effort server inventory snapshot.");
+
+    config.AddCommand<SyncCommand>("sync")
+        .WithDescription("Sync backups to an SSH host with rsync.");
 
     config.AddBranch<CommandSettings>("config", cfg =>
     {

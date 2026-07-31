@@ -11,6 +11,19 @@ retention:
   max_count: 10        # Keep at most 10 backups per target
   max_age_days: 30     # Delete backups older than 30 days (when max_count also exceeded)
 
+# Optional offsite sync using SSH and rsync. Prefer a restricted remote user and
+# consider a pull-based job on the Raspberry Pi for stronger source isolation.
+# sync:
+#   type: rsync
+#   host: raspberrypi.local
+#   user: lutra
+#   destination_path: /srv/backups/lutra
+#   ssh_key_path: /home/backup/.ssh/lutra_ed25519
+#   port: 22
+#   post_backup: true
+#   delete: false                    # remote deletion is opt-in
+#   extra_args: []
+
 # Optional notifications. Webhooks receive JSON POST requests; Healthchecks.io
 # receives GET pings (with /fail appended when an operation fails).
 # notifications:

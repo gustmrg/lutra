@@ -65,7 +65,29 @@ public sealed class BackupRunCommand : AsyncCommand<TargetSettings>
                     AnsiConsole.MarkupLine($"[yellow]Inventory snapshot failed (backups are unaffected):[/] {inventory.ErrorMessage?.EscapeMarkup() ?? "Unknown error"}");
             }
 
-            return results.All(r => r.Success) ? 0 : 1;
+            var syncSucceeded = true;
+            if (results.All(result => result.Success) && config.Sync is { PostBackup: true })
+            {
+                var sync = await AnsiConsole.Status()
+                    .StartAsync("Syncing completed backups offsite...", _ =>
+                        ServiceFactory.CreateRsyncService(config).SyncAsync(settings.Target, dryRun: false, delete: false));
+                syncSucceeded = sync.Success;
+                if (sync.Success)
+                    AnsiConsole.MarkupLine("[green]Post-backup offsite sync completed.[/]");
+                else
+                    AnsiConsole.MarkupLine($"[red]Post-backup offsite sync failed:[/] {sync.ErrorMessage?.EscapeMarkup() ?? "Unknown error"}");
+
+                if (notification is not null)
+                {
+                    await notification.NotifyAsync(
+                        sync.Success ? "sync_success" : "sync_failure",
+                        sync.Success,
+                        sync.Success ? "Post-backup offsite sync succeeded." : "Post-backup offsite sync failed.",
+                        settings.Target);
+                }
+            }
+
+            return results.All(r => r.Success) && syncSucceeded ? 0 : 1;
         }
         catch (ConfigurationException ex)
         {

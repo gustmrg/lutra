@@ -37,6 +37,9 @@ public sealed class ConfigValidateCommand : AsyncCommand<ConfigValidateSettings>
                 AnsiConsole.MarkupLine($"  Inventory: {(inventory.Enabled ? "[green]enabled[/]" : "[grey]disabled[/]")} ({collectors.EscapeMarkup()})");
             }
 
+            if (config.Sync is { } sync)
+                AnsiConsole.MarkupLine($"  Offsite sync: [blue]{sync.User.EscapeMarkup()}@{sync.Host.EscapeMarkup()}:{sync.DestinationPath.EscapeMarkup()}[/]");
+
             if (!CheckBackupDirectory(config.BackupDirectory))
                 return 1;
 
@@ -120,6 +123,18 @@ public sealed class ConfigValidateCommand : AsyncCommand<ConfigValidateSettings>
         if (config.Inventory is { Enabled: true } inventory
             && !await ValidateScheduleExpressionAsync("inventory", inventory.Schedule))
             failed = true;
+
+        if (config.Sync is not null)
+        {
+            var syncValidation = await ServiceFactory.CreateRsyncService(config).ValidateAsync();
+            if (syncValidation.Success)
+                AnsiConsole.MarkupLine("  Offsite sync: [green]reachable and writable[/]");
+            else
+            {
+                AnsiConsole.MarkupLine($"[red]Offsite sync:[/] {syncValidation.Message.EscapeMarkup()}");
+                failed = true;
+            }
+        }
 
         return failed ? 1 : 0;
     }

@@ -10,7 +10,8 @@ public enum FindingType
     ZeroSize,
     NoSuccessfulBackup,
     MissingFile,
-    IntegrityFailure
+    IntegrityFailure,
+    MissingOffsiteSync
 }
 
 public enum Severity
