@@ -144,6 +144,17 @@ public sealed class ConfigValidateCommand : AsyncCommand<ConfigValidateSettings>
             && !await ValidateScheduleExpressionAsync("inventory", inventory.Schedule))
             failed = true;
 
+        if (config.AllTargets().Any(target => target.Encryption is not null) || config.Encryption is not null)
+        {
+            if (!await CommandSucceedsAsync("age", ["--version"]))
+            {
+                AnsiConsole.MarkupLine("[red]Encryption:[/] age is configured but the 'age' executable was not found.");
+                failed = true;
+            }
+            else
+                AnsiConsole.MarkupLine("  Encryption: [green]age is available[/]");
+        }
+
         if (config.Sync is not null)
         {
             var syncValidation = await ServiceFactory.CreateRsyncService(config).ValidateAsync();
@@ -183,9 +194,12 @@ public sealed class ConfigValidateCommand : AsyncCommand<ConfigValidateSettings>
 
                 foreach (var sensitive in FindSensitivePaths(path))
                 {
-                    AnsiConsole.MarkupLine(
-                        $"[yellow]{ft.Name.EscapeMarkup()}:[/] '{sensitive.EscapeMarkup()}' looks like it may contain secrets. " +
-                        "Backups are stored unencrypted; restrict access to the backup directory (encryption is planned).");
+                    if (ft.Encryption is null && config.Encryption is null)
+                    {
+                        AnsiConsole.MarkupLine(
+                            $"[yellow]{ft.Name.EscapeMarkup()}:[/] '{sensitive.EscapeMarkup()}' looks like it may contain secrets. " +
+                            "Configure age encryption or restrict access to the backup directory.");
+                    }
                 }
             }
         }

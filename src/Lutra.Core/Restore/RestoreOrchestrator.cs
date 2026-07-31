@@ -187,6 +187,7 @@ public class RestoreOrchestrator
         {
             if (!File.Exists(archiveFilePath))
                 throw new FileNotFoundException($"Backup file not found: {archiveFilePath}");
+            EnsureNotEncrypted(archiveFilePath);
 
             await using var targetLock = TargetLock.Acquire(_config.BackupDirectory, target.Name, "Restore");
 
@@ -223,6 +224,7 @@ public class RestoreOrchestrator
         var stopwatch = Stopwatch.StartNew();
         try
         {
+            EnsureNotEncrypted(archiveFilePath);
             var integrity = await BackupIntegrity.VerifyFileAsync(archiveFilePath, cancellationToken);
             if (!integrity.Success)
                 throw new InvalidOperationException($"Integrity check failed: {integrity.Message}");
@@ -283,6 +285,7 @@ public class RestoreOrchestrator
         {
             if (!File.Exists(archiveFilePath))
                 throw new FileNotFoundException($"Backup file not found: {archiveFilePath}");
+            EnsureNotEncrypted(archiveFilePath);
 
             var integrity = await BackupIntegrity.VerifyFileAsync(archiveFilePath, cancellationToken);
             if (!integrity.Success)
@@ -468,6 +471,7 @@ public class RestoreOrchestrator
 
     private static RestoreSource DescribeSource(string backupFilePath)
     {
+        EnsureNotEncrypted(backupFilePath);
         var isCompressed = backupFilePath.EndsWith(".gz", StringComparison.OrdinalIgnoreCase);
         var fileName = Path.GetFileName(backupFilePath);
         var extension = isCompressed
@@ -475,6 +479,13 @@ public class RestoreOrchestrator
             : Path.GetExtension(fileName);
 
         return new RestoreSource(backupFilePath, extension, isCompressed);
+    }
+
+    private static void EnsureNotEncrypted(string filePath)
+    {
+        if (filePath.EndsWith(".age", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException(
+                "This backup is age-encrypted. Decrypt it with 'age --decrypt --identity <key> --output <file> <file.age>' before restore or test-restore.");
     }
 
     private static Stream OpenSourceStream(RestoreSource source)

@@ -223,6 +223,19 @@ Most commands support these options:
 | `notifications.webhooks` | list | `[]` | JSON webhook endpoints for operation/health events |
 | `notifications.healthchecks_url` | string | — | Healthchecks.io-compatible ping URL |
 | `sync` | object | — | Optional SSH/rsync offsite destination |
+| `encryption` | object | — | Global age recipient inherited by targets |
+
+Backups can be encrypted after compression with [age](https://age-encryption.org). Configure `encryption: { type: age, recipient: age1... }` globally or on an individual target. The private identity key must never be stored in Lutra configuration or on the source VPS. Checksums cover the encrypted `.age` artifact and manifests contain only a recipient fingerprint.
+
+To restore, decrypt manually on a trusted host (or temporarily on the VPS), then pass the decrypted file to Lutra:
+
+```bash
+age --decrypt --identity /secure/path/lutra.agekey \
+  --output app-config.tar.gz app-config.tar.gz.age
+lutra restore --target app-config --file app-config.tar.gz
+```
+
+`config validate --preflight` checks that `age` is installed. Sensitive file paths produce warnings only when neither global nor target encryption is configured.
 
 Offsite sync is configured with `sync.type: rsync`, `host`, `user`, `destination_path`, and `ssh_key_path`; optional fields are `port`, `extra_args`, `post_backup`, and `delete`. Remote deletion is disabled unless enabled in configuration or explicitly requested with `--delete`. `--dry-run` is recommended before the first transfer. A successful transfer writes a local `.last-sync.json` marker used by health checks.
 
@@ -292,7 +305,7 @@ files:
     compression: gzip
 ```
 
-> **Secrets**: file targets often include `.env` files and private keys. `lutra config validate` warns when configured paths look sensitive. Backups are stored unencrypted — restrict access to the backup directory (encryption support is planned).
+> **Secrets**: file targets often include `.env` files and private keys. `lutra config validate` warns when sensitive paths are not protected by configured age encryption.
 
 ### Server Inventory Settings
 

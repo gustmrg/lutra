@@ -1,3 +1,5 @@
+using Lutra.Core.Encryption;
+
 namespace Lutra.Core.Configuration;
 
 /// <summary>
@@ -51,4 +53,6 @@ public class FileTarget : IBackupTarget
     /// Gets the target-specific retention policy, overriding the global default.
     /// </summary>
     public RetentionPolicy? Retention { get; init; }
+
+    public EncryptionConfig? Encryption { get; init; }
 }

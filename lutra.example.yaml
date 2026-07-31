@@ -6,6 +6,12 @@
 # Base directory where all backup files will be stored
 backup_directory: /var/backups/lutra
 
+# Optional global age encryption inherited by every target. Store only the public
+# recipient here; keep the private identity key off the VPS.
+# encryption:
+#   type: age
+#   recipient: age1replace_with_your_public_recipient
+
 # Global retention policy (can be overridden per database)
 retention:
   max_count: 10        # Keep at most 10 backups per target

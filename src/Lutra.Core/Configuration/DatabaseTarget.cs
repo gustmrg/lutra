@@ -1,3 +1,5 @@
+using Lutra.Core.Encryption;
+
 namespace Lutra.Core.Configuration;
 
 /// <summary>
@@ -102,4 +104,6 @@ public class DatabaseTarget : IBackupTarget
     /// databases (e.g., keep production backups longer than development backups).
     /// </remarks>
     public RetentionPolicy? Retention { get; init; }
+
+    public EncryptionConfig? Encryption { get; init; }
 }

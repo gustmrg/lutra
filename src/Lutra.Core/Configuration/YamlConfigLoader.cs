@@ -80,6 +80,7 @@ public class YamlConfigLoader : IConfigLoader
             throw new ConfigurationException("'backup_directory' is required.");
 
         ValidateRetention("retention", config.Retention);
+        ValidateEncryption("encryption", config.Encryption);
 
         if (config.Databases.Count == 0 && config.Files.Count == 0 && config.Volumes.Count == 0)
             throw new ConfigurationException("At least one target must be configured under 'databases', 'files', or 'volumes'.");
@@ -112,6 +113,7 @@ public class YamlConfigLoader : IConfigLoader
 
             if (db.Retention is not null)
                 ValidateRetention($"{prefix} ({db.Name}).retention", db.Retention);
+            ValidateEncryption($"{prefix} ({db.Name}).encryption", db.Encryption);
 
             if (db.PasswordEnv is not null && Environment.GetEnvironmentVariable(db.PasswordEnv) is null)
                 throw new ConfigurationException(
@@ -192,6 +194,7 @@ public class YamlConfigLoader : IConfigLoader
                 throw new ConfigurationException($"{prefix} ({volume.Name}): use a valid systemd calendar 'schedule'.");
             if (volume.Retention is not null)
                 ValidateRetention($"{prefix} ({volume.Name}).retention", volume.Retention);
+            ValidateEncryption($"{prefix} ({volume.Name}).encryption", volume.Encryption);
         }
 
         for (var i = 0; i < config.Files.Count; i++)
@@ -217,7 +220,19 @@ public class YamlConfigLoader : IConfigLoader
 
             if (ft.Retention is not null)
                 ValidateRetention($"{prefix} ({ft.Name}).retention", ft.Retention);
+            ValidateEncryption($"{prefix} ({ft.Name}).encryption", ft.Encryption);
         }
+    }
+
+    private static void ValidateEncryption(string prefix, Lutra.Core.Encryption.EncryptionConfig? encryption)
+    {
+        if (encryption is null)
+            return;
+        if (!encryption.Type.Equals("age", StringComparison.OrdinalIgnoreCase))
+            throw new ConfigurationException($"{prefix}: only type 'age' is supported.");
+        if (string.IsNullOrWhiteSpace(encryption.Recipient)
+            || !encryption.Recipient.StartsWith("age1", StringComparison.Ordinal))
+            throw new ConfigurationException($"{prefix}: a valid age recipient public key is required.");
     }
 
     private static void ValidateRetention(string prefix, RetentionPolicy retention)

@@ -67,4 +67,11 @@ public sealed class BackupManifest
 
     [JsonPropertyName("success")]
     public required bool Success { get; init; }
+
+    [JsonPropertyName("encrypted")]
+    public bool Encrypted { get; init; }
+
+    [JsonPropertyName("encryption_recipient_fingerprint")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? EncryptionRecipientFingerprint { get; init; }
 }

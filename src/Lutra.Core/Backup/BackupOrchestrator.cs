@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.IO.Compression;
 using System.Reflection;
 using Lutra.Core.Configuration;
+using Lutra.Core.Encryption;
 using Lutra.Core.Files;
 using Lutra.Core.History;
 using Lutra.Core.Volumes;
@@ -73,7 +74,9 @@ public class BackupOrchestrator
                 CompletedAt = DateTime.UtcNow,
                 DurationMs = (long)duration.TotalMilliseconds,
                 LutraVersion = GetVersion(),
-                Success = true
+                Success = true,
+                Encrypted = GetEncryption(target) is not null,
+                EncryptionRecipientFingerprint = GetRecipientFingerprint(target)
             },
             cancellationToken);
     }
@@ -99,7 +102,9 @@ public class BackupOrchestrator
                 CompletedAt = DateTime.UtcNow,
                 DurationMs = (long)duration.TotalMilliseconds,
                 LutraVersion = GetVersion(),
-                Success = true
+                Success = true,
+                Encrypted = GetEncryption(target) is not null,
+                EncryptionRecipientFingerprint = GetRecipientFingerprint(target)
             },
             cancellationToken);
     }
@@ -125,7 +130,9 @@ public class BackupOrchestrator
                 CompletedAt = DateTime.UtcNow,
                 DurationMs = (long)duration.TotalMilliseconds,
                 LutraVersion = GetVersion(),
-                Success = true
+                Success = true,
+                Encrypted = GetEncryption(target) is not null,
+                EncryptionRecipientFingerprint = GetRecipientFingerprint(target)
             },
             cancellationToken);
     }
@@ -186,12 +193,32 @@ public class BackupOrchestrator
             await using var targetLock = TargetLock.Acquire(_config.BackupDirectory, target.Name, "Backup");
 
             fileName = BackupFileNaming.Build(target.Name, startTime, backupId, extension, compression);
+            var encryption = GetEncryption(target);
+            if (encryption is not null)
+                fileName += ".age";
             var targetDir = Path.Combine(_config.BackupDirectory, target.Name);
             Directory.CreateDirectory(targetDir);
             finalFilePath = Path.Combine(targetDir, fileName);
             tempFilePath = Path.Combine(targetDir, $".{fileName}.tmp");
 
             await writeBackupAsync(tempFilePath, backupId, cancellationToken);
+
+            if (encryption is not null)
+            {
+                var encryptedTempPath = tempFilePath + ".encrypted";
+                try
+                {
+                    await AgeEncryption.EncryptAsync(
+                        tempFilePath, encryptedTempPath, encryption.Recipient, cancellationToken);
+                }
+                catch
+                {
+                    DeleteIfExists(encryptedTempPath);
+                    throw;
+                }
+                DeleteIfExists(tempFilePath);
+                tempFilePath = encryptedTempPath;
+            }
 
             File.Move(tempFilePath, finalFilePath);
             finalMoved = true;
@@ -406,6 +433,14 @@ public class BackupOrchestrator
             })
             .ToList();
     }
+
+    private EncryptionConfig? GetEncryption(IBackupTarget target)
+        => target.Encryption ?? _config.Encryption;
+
+    private string? GetRecipientFingerprint(IBackupTarget target)
+        => GetEncryption(target) is { } encryption
+            ? AgeEncryption.RecipientFingerprint(encryption.Recipient)
+            : null;
 
     private static void DeleteIfExists(string? path)
     {

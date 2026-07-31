@@ -1,3 +1,5 @@
+using Lutra.Core.Encryption;
+
 namespace Lutra.Core.Configuration;
 
 /// <summary>
@@ -22,4 +24,7 @@ public interface IBackupTarget
     /// the global default.
     /// </summary>
     RetentionPolicy? Retention { get; }
+
+    /// <summary>Gets target-specific age encryption settings, if any.</summary>
+    EncryptionConfig? Encryption { get; }
 }
