@@ -52,6 +52,11 @@ internal static class ServiceFactory
         return new BackupHistoryService(config.BackupDirectory);
     }
 
+    public static BackupReconciliationService CreateReconciliationService(BackupConfig config)
+    {
+        return new BackupReconciliationService(config, CreateHistoryService(config));
+    }
+
     public static AnomalyDetector CreateAnomalyDetector(BackupConfig config)
     {
         return new AnomalyDetector(config.Health ?? new HealthConfig());

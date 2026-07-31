@@ -151,6 +151,9 @@ lutra backup run                             # Back up all configured databases
 lutra backup run --target my-postgres        # Back up a specific database
 lutra backup list                            # List configured databases and schedules
 lutra backup verify-file --file <PATH>       # Verify a backup file checksum and manifest
+lutra backup reconcile                       # Compare backup files, sidecars, and history
+lutra backup reconcile --target my-postgres  # Reconcile one target only
+lutra backup reconcile --json                # Machine-readable reconciliation report
 
 # Restore
 lutra restore                                # Interactive restore (select DB → backup)
@@ -373,7 +376,7 @@ Successful backups also write integrity sidecars:
 - `.sha256` stores the SHA-256 checksum for the backup file
 - `.json` stores a manifest with target metadata, size, checksum, duration, format, compression, and Lutra version
 
-Use `lutra backup verify-file --file <PATH>` to verify a backup against its checksum and manifest sidecars.
+Use `lutra backup verify-file --file <PATH>` to verify a backup against its checksum and manifest sidecars. Use `lutra backup reconcile` for a read-only comparison of configured target directories with successful history entries. It reports untracked backup files, missing backup files, and missing checksum or manifest sidecars; exit code `1` means inconsistencies were found.
 
 ## Restoring and Verifying Backups
 

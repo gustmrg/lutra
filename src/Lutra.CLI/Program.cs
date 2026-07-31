@@ -32,6 +32,9 @@ app.Configure(config =>
 
         backup.AddCommand<BackupVerifyFileCommand>("verify-file")
             .WithDescription("Verify a backup file against its checksum and manifest sidecars.");
+
+        backup.AddCommand<BackupReconcileCommand>("reconcile")
+            .WithDescription("Find inconsistencies between backup files, sidecars, and history.");
     });
 
     config.AddCommand<HistoryCommand>("history")
