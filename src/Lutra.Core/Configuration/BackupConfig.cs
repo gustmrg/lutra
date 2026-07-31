@@ -1,5 +1,6 @@
 using Lutra.Core.Health;
 using Lutra.Core.Inventory;
+using Lutra.Core.Notifications;
 
 namespace Lutra.Core.Configuration;
 
@@ -46,6 +47,9 @@ public class BackupConfig
     /// Gets optional server inventory snapshot configuration.
     /// </summary>
     public InventoryConfig? Inventory { get; init; }
+
+    /// <summary>Gets optional webhook and Healthchecks.io notification settings.</summary>
+    public NotificationConfig? Notifications { get; init; }
 
     /// <summary>
     /// Returns all configured targets (databases first, then file targets).

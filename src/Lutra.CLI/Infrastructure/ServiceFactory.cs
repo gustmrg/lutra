@@ -5,6 +5,7 @@ using Lutra.Core.Configuration;
 using Lutra.Core.Health;
 using Lutra.Core.History;
 using Lutra.Core.Inventory;
+using Lutra.Core.Notifications;
 using Lutra.Core.Restore;
 
 namespace Lutra.CLI.Infrastructure;
@@ -60,6 +61,16 @@ internal static class ServiceFactory
     public static AnomalyDetector CreateAnomalyDetector(BackupConfig config)
     {
         return new AnomalyDetector(config.Health ?? new HealthConfig());
+    }
+
+    public static BackupArtifactHealthChecker CreateArtifactHealthChecker(BackupConfig config)
+    {
+        return new BackupArtifactHealthChecker(config.BackupDirectory);
+    }
+
+    public static NotificationService? CreateNotificationService(BackupConfig config)
+    {
+        return config.Notifications is null ? null : new NotificationService(config.Notifications);
     }
 
     public static InventoryService CreateInventoryService(BackupConfig config)

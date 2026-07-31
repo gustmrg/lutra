@@ -20,8 +20,8 @@ public class AnomalyDetector
         {
             findings.Add(new HealthFinding
             {
-                Type = FindingType.FailureStreak,
-                Severity = Severity.Info,
+                Type = FindingType.NoSuccessfulBackup,
+                Severity = Severity.Warning,
                 Message = "No backup history found for this target."
             });
 
@@ -33,6 +33,16 @@ public class AnomalyDetector
 
         findings.AddRange(DetectFailureStreaks(orderedRecords));
         findings.AddRange(DetectZeroSizeBackups(successRecords));
+
+        if (successRecords.Count == 0)
+        {
+            findings.Add(new HealthFinding
+            {
+                Type = FindingType.NoSuccessfulBackup,
+                Severity = Severity.Critical,
+                Message = "This target has no successful backup."
+            });
+        }
 
         if (successRecords.Count >= _config.MinSamples)
         {
@@ -52,7 +62,7 @@ public class AnomalyDetector
         }
 
         var intervalHours = ScheduleIntervalEstimator.EstimateIntervalHours(target.Schedule);
-        if (intervalHours.HasValue && successRecords.Count >= 2)
+        if (intervalHours.HasValue && successRecords.Count >= 1)
             findings.AddRange(DetectMissedSchedules(successRecords, intervalHours.Value));
 
         return BuildReport(target.Name, findings, records.Count);

@@ -1,3 +1,5 @@
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using Lutra.CLI.Infrastructure;
 using Lutra.Core.Configuration;
 using Lutra.Core.Health;
@@ -15,6 +17,7 @@ public sealed class HealthCommand : AsyncCommand<HealthSettings>
             var config = ServiceFactory.LoadConfig(settings);
             var historyService = ServiceFactory.CreateHistoryService(config);
             var detector = ServiceFactory.CreateAnomalyDetector(config);
+            var artifactChecker = ServiceFactory.CreateArtifactHealthChecker(config);
 
             var targets = settings.Target is not null
                 ? [ServiceFactory.ResolveTarget(config, settings.Target)]
@@ -26,12 +29,39 @@ public sealed class HealthCommand : AsyncCommand<HealthSettings>
             {
                 var records = await historyService.GetRecordsByTargetAsync(target.Name);
                 var backupRecords = records.Where(r => r.RecordType is null).ToList();
-                reports.Add(detector.Analyze(backupRecords, target));
+                var report = detector.Analyze(backupRecords, target);
+                report.Findings.AddRange(await artifactChecker.CheckAsync(target, backupRecords));
+                reports.Add(report);
             }
 
-            RenderReports(reports);
+            if (settings.Json)
+            {
+                var options = new JsonSerializerOptions
+                {
+                    WriteIndented = true,
+                    PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
+                    Converters = { new JsonStringEnumConverter(JsonNamingPolicy.SnakeCaseLower) }
+                };
+                Console.WriteLine(JsonSerializer.Serialize(reports, options));
+            }
+            else
+            {
+                RenderReports(reports);
+            }
 
             var worstStatus = reports.Max(r => r.OverallStatus);
+            var notification = ServiceFactory.CreateNotificationService(config);
+            if (notification is not null)
+            {
+                var healthy = worstStatus == OverallStatus.Healthy;
+                await notification.NotifyAsync(
+                    healthy ? "health_healthy" : "health_unhealthy",
+                    healthy,
+                    healthy
+                        ? "All configured backup targets are healthy."
+                        : $"Backup health is {worstStatus}; {reports.Sum(report => report.Findings.Count(finding => finding.Severity != Severity.Info))} actionable finding(s).",
+                    settings.Target);
+            }
             return worstStatus switch
             {
                 OverallStatus.Critical => 2,

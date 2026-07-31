@@ -135,6 +135,16 @@ public class YamlConfigLoader : IConfigLoader
             }
         }
 
+        if (config.Notifications is { } notifications)
+        {
+            foreach (var url in notifications.Webhooks.Append(notifications.HealthchecksUrl)
+                         .Where(url => !string.IsNullOrWhiteSpace(url)))
+            {
+                if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || uri.Scheme is not ("http" or "https"))
+                    throw new ConfigurationException($"notifications: '{url}' is not a valid HTTP(S) URL.");
+            }
+        }
+
         if (config.Inventory is { } inventory)
         {
             if (string.IsNullOrWhiteSpace(inventory.Schedule))

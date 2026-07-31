@@ -171,6 +171,7 @@ lutra cleanup --target my-postgres           # Clean up specific target
 lutra cleanup --dry-run                      # Preview what would be deleted
 lutra health                                 # Analyze backup health and detect anomalies
 lutra health --target my-postgres            # Analyze health for a specific target
+lutra health --json                          # Machine-readable health report
 lutra inventory                              # Capture a server inventory snapshot
 
 # Configuration
@@ -215,6 +216,10 @@ Most commands support these options:
 | `backup_directory`     | string  | —                      | Base directory for all backup files   |
 | `retention.max_count`  | integer | `10`                   | Max backups to keep per database      |
 | `retention.max_age_days` | integer | `30`                 | Delete backups older than N days      |
+| `notifications.webhooks` | list | `[]` | JSON webhook endpoints for operation/health events |
+| `notifications.healthchecks_url` | string | — | Healthchecks.io-compatible ping URL |
+
+Notifications are best-effort and never change an operation's exit status. Generic webhooks receive event, status, summary, target, timestamp, and host fields. A configured Healthchecks.io URL is pinged directly for success and with `/fail` appended for failures. Backup, restore, verification, and unhealthy health-check events are supported.
 
 ### Database Target Settings
 
@@ -375,6 +380,8 @@ Per-target retention settings override global defaults. Inventory snapshots use 
 Successful backups also write integrity sidecars:
 - `.sha256` stores the SHA-256 checksum for the backup file
 - `.json` stores a manifest with target metadata, size, checksum, duration, format, compression, and Lutra version
+
+`lutra health` checks recent backup age, failure streaks, size and duration anomalies, missing history-referenced files, and the latest artifact's checksum/sidecars. It exits `0` when healthy, `1` for warnings, and `2` for critical findings; use `--json` for monitoring integrations.
 
 Use `lutra backup verify-file --file <PATH>` to verify a backup against its checksum and manifest sidecars. Use `lutra backup reconcile` for a read-only comparison of configured target directories with successful history entries. It reports untracked backup files, missing backup files, and missing checksum or manifest sidecars; exit code `1` means inconsistencies were found.
 

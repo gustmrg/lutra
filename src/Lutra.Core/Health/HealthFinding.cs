@@ -7,7 +7,10 @@ public enum FindingType
     FailureStreak,
     MissedSchedule,
     SizeTrend,
-    ZeroSize
+    ZeroSize,
+    NoSuccessfulBackup,
+    MissingFile,
+    IntegrityFailure
 }
 
 public enum Severity

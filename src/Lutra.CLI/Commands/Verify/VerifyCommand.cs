@@ -68,6 +68,16 @@ public sealed class VerifyCommand : AsyncCommand<VerifySettings>
                     _ => throw new ConfigurationException($"Unknown target type for '{target.Name}'.")
                 });
 
+            var notification = ServiceFactory.CreateNotificationService(config);
+            if (notification is not null)
+            {
+                await notification.NotifyAsync(
+                    result.Success ? "verify_success" : "verify_failure",
+                    result.Success,
+                    result.Success ? "Backup verification succeeded." : "Backup verification failed.",
+                    target.Name);
+            }
+
             if (result.Success)
             {
                 AnsiConsole.MarkupLine("[green]Verification passed[/]");

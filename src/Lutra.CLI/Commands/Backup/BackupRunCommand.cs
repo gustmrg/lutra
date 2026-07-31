@@ -39,6 +39,19 @@ public sealed class BackupRunCommand : AsyncCommand<TargetSettings>
 
             PrintResults(results);
 
+            var notification = ServiceFactory.CreateNotificationService(config);
+            if (notification is not null)
+            {
+                var success = results.All(result => result.Success);
+                await notification.NotifyAsync(
+                    success ? "backup_success" : "backup_failure",
+                    success,
+                    success
+                        ? $"{results.Count} backup(s) completed successfully."
+                        : $"{results.Count(result => !result.Success)} of {results.Count} backup(s) failed.",
+                    settings.Target);
+            }
+
             // A full run also captures the optional host inventory. It is best-effort:
             // an inventory failure is visible but never changes the backup exit status.
             if (settings.Target is null && config.Inventory is { Enabled: true })

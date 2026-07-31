@@ -11,6 +11,13 @@ retention:
   max_count: 10        # Keep at most 10 backups per target
   max_age_days: 30     # Delete backups older than 30 days (when max_count also exceeded)
 
+# Optional notifications. Webhooks receive JSON POST requests; Healthchecks.io
+# receives GET pings (with /fail appended when an operation fails).
+# notifications:
+#   webhooks:
+#     - https://monitor.example/hooks/lutra
+#   healthchecks_url: https://hc-ping.com/your-check-uuid
+
 # Database targets to back up
 databases:
   # PostgreSQL Example

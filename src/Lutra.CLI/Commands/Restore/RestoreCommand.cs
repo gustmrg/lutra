@@ -62,8 +62,8 @@ public sealed class RestoreCommand : AsyncCommand<RestoreSettings>
 
             return target switch
             {
-                DatabaseTarget databaseTarget => await RestoreDatabaseAsync(orchestrator, databaseTarget, backupFile, settings),
-                FileTarget fileTarget => await RestoreFilesAsync(orchestrator, fileTarget, backupFile, settings),
+                DatabaseTarget databaseTarget => await RestoreDatabaseAsync(config, orchestrator, databaseTarget, backupFile, settings),
+                FileTarget fileTarget => await RestoreFilesAsync(config, orchestrator, fileTarget, backupFile, settings),
                 _ => 1
             };
         }
@@ -80,6 +80,7 @@ public sealed class RestoreCommand : AsyncCommand<RestoreSettings>
     }
 
     private static async Task<int> RestoreDatabaseAsync(
+        BackupConfig config,
         Core.Restore.RestoreOrchestrator orchestrator,
         DatabaseTarget target,
         string backupFile,
@@ -102,6 +103,8 @@ public sealed class RestoreCommand : AsyncCommand<RestoreSettings>
             .StartAsync($"Restoring {target.Name}...", async _ =>
                 await orchestrator.RestoreAsync(target, backupFile));
 
+        await NotifyRestoreAsync(config, target.Name, result.Success);
+
         if (result.Success)
         {
             AnsiConsole.MarkupLine(
@@ -115,6 +118,7 @@ public sealed class RestoreCommand : AsyncCommand<RestoreSettings>
     }
 
     private static async Task<int> RestoreFilesAsync(
+        BackupConfig config,
         Core.Restore.RestoreOrchestrator orchestrator,
         FileTarget target,
         string backupFile,
@@ -138,6 +142,8 @@ public sealed class RestoreCommand : AsyncCommand<RestoreSettings>
             .StartAsync($"Extracting {target.Name}...", async _ =>
                 await orchestrator.RestoreFilesAsync(target, backupFile, destination));
 
+        await NotifyRestoreAsync(config, target.Name, result.Success);
+
         if (result.Success)
         {
             AnsiConsole.MarkupLine(
@@ -148,6 +154,19 @@ public sealed class RestoreCommand : AsyncCommand<RestoreSettings>
 
         AnsiConsole.MarkupLine($"[red]Restore failed:[/] {result.ErrorMessage?.EscapeMarkup()}");
         return 1;
+    }
+
+    private static async Task NotifyRestoreAsync(BackupConfig config, string targetName, bool success)
+    {
+        var notification = ServiceFactory.CreateNotificationService(config);
+        if (notification is not null)
+        {
+            await notification.NotifyAsync(
+                success ? "restore_success" : "restore_failure",
+                success,
+                success ? "Backup restore succeeded." : "Backup restore failed.",
+                targetName);
+        }
     }
 
     private static bool Confirm(bool force)
