@@ -36,6 +36,25 @@ public sealed class HealthAndProviderTests
     }
 
     [Fact]
+    public void Analyze_ExcludesActiveRowsAndCountsInterruptedAsFailure()
+    {
+        var target = PostgreSqlTarget();
+        var now = DateTimeOffset.UtcNow;
+        var records = new List<HistoryRecord>
+        {
+            Operation(HistoryOperationStatus.Creating, now),
+            Operation(HistoryOperationStatus.Interrupted, now.AddMinutes(-1)),
+            Operation(HistoryOperationStatus.Cancelled, now.AddMinutes(-2)),
+            Operation(HistoryOperationStatus.Failed, now.AddMinutes(-3))
+        };
+
+        var report = new AnomalyDetector(new HealthConfig()).Analyze(records, target);
+
+        Assert.Equal(3, report.TotalBackupsAnalyzed);
+        Assert.Contains(report.Findings, finding => finding.Type == FindingType.FailureStreak);
+    }
+
+    [Fact]
     public void PostgresProvider_UsesEnvironmentForPasswordAndExpectedFormat()
     {
         const string variable = "LUTRA_TEST_PASSWORD";
@@ -102,4 +121,18 @@ public sealed class HealthAndProviderTests
         Format = "custom",
         Schedule = "daily"
     };
+
+    private static HistoryRecord Operation(HistoryOperationStatus status, DateTimeOffset startedAt)
+        => new()
+        {
+            TargetName = "postgres",
+            OperationType = HistoryOperationType.Backup,
+            Status = status,
+            StartedAt = startedAt,
+            UpdatedAt = startedAt,
+            CompletedAt = status.IsTerminal() ? startedAt : null,
+            LeaseId = status.IsActive() ? Guid.NewGuid() : null,
+            LeaseExpiresAt = status.IsActive() ? startedAt.AddMinutes(5) : null,
+            ErrorMessage = status.IsTerminal() ? "failed" : null
+        };
 }

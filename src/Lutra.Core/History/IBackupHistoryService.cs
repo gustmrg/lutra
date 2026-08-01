@@ -8,6 +8,42 @@ namespace Lutra.Core.History;
 /// </remarks>
 public interface IBackupHistoryService
 {
+    Task<HistoryOperationLease> BeginOperationAsync(
+        string targetName,
+        HistoryOperationType operationType,
+        CancellationToken cancellationToken = default);
+
+    Task CompleteOperationAsync(
+        Guid operationId,
+        Guid leaseId,
+        HistoryOperationCompletion completion,
+        CancellationToken cancellationToken = default);
+
+    Task FailOperationAsync(
+        Guid operationId,
+        Guid leaseId,
+        string errorMessage,
+        long? durationMs = null,
+        CancellationToken cancellationToken = default);
+
+    Task CancelOperationAsync(
+        Guid operationId,
+        Guid leaseId,
+        string? errorMessage = null,
+        long? durationMs = null,
+        CancellationToken cancellationToken = default);
+
+    Task RenewLeaseAsync(
+        Guid operationId,
+        Guid leaseId,
+        CancellationToken cancellationToken = default);
+
+    Task InterruptOperationAsync(
+        Guid operationId,
+        Guid leaseId,
+        string errorMessage,
+        CancellationToken cancellationToken = default);
+
     /// <summary>
     /// Adds a terminal operation record to application history.
     /// </summary>

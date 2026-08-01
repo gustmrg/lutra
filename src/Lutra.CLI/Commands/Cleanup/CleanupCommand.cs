@@ -1,6 +1,7 @@
 using Lutra.CLI.Infrastructure;
 using Lutra.Core.Backup;
 using Lutra.Core.Configuration;
+using Lutra.Core.History;
 using Spectre.Console;
 using Spectre.Console.Cli;
 
@@ -54,6 +55,7 @@ public sealed class CleanupCommand : AsyncCommand<CleanupSettings>
                 {
                     var records = await history.GetAllRecordsAsync();
                     var count = records.Count(record => record.StartedAt < cutoff
+                        && record.Status.IsTerminal()
                         && (record.OperationType != Lutra.Core.History.HistoryOperationType.Backup
                             || record.Status != Lutra.Core.History.HistoryOperationStatus.Succeeded));
                     AnsiConsole.MarkupLine($"  History: would prune [blue]{count}[/] operational record(s)");

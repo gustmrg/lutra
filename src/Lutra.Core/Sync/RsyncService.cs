@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text.Json;
+using Lutra.Core.Backup;
 using Lutra.Core.Configuration;
 using Lutra.Core.History;
 
@@ -10,15 +11,18 @@ public sealed class RsyncService
     private readonly BackupConfig _config;
     private readonly IBackupHistoryService _history;
     private readonly IRsyncProcessRunner _processRunner;
+    private readonly Func<string, string, string, FileStream> _targetLockFactory;
 
     public RsyncService(
         BackupConfig config,
         IBackupHistoryService history,
-        IRsyncProcessRunner? processRunner = null)
+        IRsyncProcessRunner? processRunner = null,
+        Func<string, string, string, FileStream>? targetLockFactory = null)
     {
         _config = config;
         _history = history;
         _processRunner = processRunner ?? new SystemRsyncProcessRunner();
+        _targetLockFactory = targetLockFactory ?? TargetLock.Acquire;
     }
 
     public async Task<SyncValidationResult> ValidateAsync(CancellationToken cancellationToken = default)
@@ -50,6 +54,8 @@ public sealed class RsyncService
         var destination = sync.DestinationPath;
         string? walSource = null;
         string? walDestination = null;
+        List<string> historyTargetNames;
+        List<string> lockTargetNames;
 
         if (targetName is not null)
         {
@@ -60,79 +66,148 @@ public sealed class RsyncService
 
             source = Path.Combine(source, target.Name);
             destination = CombineRemotePath(destination, target.Name);
+            historyTargetNames = [target.Name];
+            lockTargetNames = [target.Name];
             if (target is DatabaseTarget { Type: DatabaseType.PostgreSql, PostgresWalArchivePath: not null })
             {
                 walSource = Path.Combine(_config.BackupDirectory, target.Name + "-wal");
                 walDestination = CombineRemotePath(sync.DestinationPath, target.Name + "-wal");
+                lockTargetNames.Add(target.Name + "-wal");
             }
         }
-
-        if (!Directory.Exists(source))
-            return new SyncResult(false, dryRun, targetName, null, $"Local source directory does not exist: {source}", startedAt);
-
-        var args = new List<string> { "-a", "--human-readable", "--itemize-changes" };
-        if (dryRun)
-            args.Add("--dry-run");
-        if (delete || sync.Delete)
-            args.Add("--delete");
-        if (targetName is null)
-            AddFullRootExclusions(args);
-        args.AddRange(sync.ExtraArgs);
-        args.Add("-e");
-        args.Add(BuildRsyncSshCommand(sync));
-        args.Add(source.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar);
-        args.Add($"{sync.User}@{sync.Host}:{destination.TrimEnd('/')}/");
-
-        var process = await _processRunner.RunAsync("rsync", args, cancellationToken);
-        var success = process.ExitCode == 0;
-        var output = process.StdOut;
-        var error = success ? null : SafeError(process);
-        if (success && walSource is not null && Directory.Exists(walSource))
+        else
         {
-            var walArgs = args.ToList();
-            walArgs[^2] = walSource.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
-            walArgs[^1] = $"{sync.User}@{sync.Host}:{walDestination!.TrimEnd('/')}/";
-            var walProcess = await _processRunner.RunAsync("rsync", walArgs, cancellationToken);
-            success = walProcess.ExitCode == 0;
-            output = output + walProcess.StdOut;
-            if (!success)
-                error = SafeError(walProcess);
+            historyTargetNames = _config.AllTargets().Select(target => target.Name).ToList();
+            lockTargetNames = historyTargetNames
+                .Concat(_config.Databases
+                    .Where(database => database.PostgresWalArchivePath is not null)
+                    .Select(database => database.Name + "-wal"))
+                .Distinct(StringComparer.Ordinal)
+                .OrderBy(name => name, StringComparer.Ordinal)
+                .ToList();
         }
-        var result = new SyncResult(success, dryRun, targetName, output, error, startedAt);
 
-        if (!dryRun)
+        var operations = new List<HistoryOperationScope>();
+        var targetLocks = new List<FileStream>();
+        try
         {
-            await WriteMarkerAsync(result, cancellationToken);
-            await RecordSyncAsync(result, cancellationToken);
+            if (!dryRun)
+            {
+                foreach (var historyTargetName in historyTargetNames)
+                {
+                    operations.Add(await HistoryOperationScope.BeginAsync(
+                        _history,
+                        historyTargetName,
+                        HistoryOperationType.Sync,
+                        cancellationToken));
+                }
+            }
+
+            if (!Directory.Exists(source))
+            {
+                var missingSource = $"Local source directory does not exist: {source}";
+                await FailOperationsAsync(operations, missingSource);
+                return new SyncResult(false, dryRun, targetName, null, missingSource, startedAt);
+            }
+
+            try
+            {
+                foreach (var lockTargetName in lockTargetNames.OrderBy(name => name, StringComparer.Ordinal))
+                {
+                    targetLocks.Add(_targetLockFactory(
+                        _config.BackupDirectory,
+                        lockTargetName,
+                        "Sync"));
+                }
+            }
+            catch (InvalidOperationException ex)
+            {
+                var busyMessage = ex.Message + " Retry the sync after the active operation finishes.";
+                await FailOperationsAsync(operations, busyMessage);
+                return new SyncResult(false, dryRun, targetName, null, busyMessage, startedAt);
+            }
+
+            var args = new List<string> { "-a", "--human-readable", "--itemize-changes" };
+            if (dryRun)
+                args.Add("--dry-run");
+            if (delete || sync.Delete)
+                args.Add("--delete");
+            if (targetName is null)
+                AddFullRootExclusions(args);
+            args.AddRange(sync.ExtraArgs);
+            args.Add("-e");
+            args.Add(BuildRsyncSshCommand(sync));
+            args.Add(source.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar);
+            args.Add($"{sync.User}@{sync.Host}:{destination.TrimEnd('/')}/");
+
+            var process = await _processRunner.RunAsync("rsync", args, cancellationToken);
+            var success = process.ExitCode == 0;
+            var output = process.StdOut;
+            var error = success ? null : SafeError(process);
+            if (success && walSource is not null && Directory.Exists(walSource))
+            {
+                var walArgs = args.ToList();
+                walArgs[^2] = walSource.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+                walArgs[^1] = $"{sync.User}@{sync.Host}:{walDestination!.TrimEnd('/')}/";
+                var walProcess = await _processRunner.RunAsync("rsync", walArgs, cancellationToken);
+                success = walProcess.ExitCode == 0;
+                output += walProcess.StdOut;
+                if (!success)
+                    error = SafeError(walProcess);
+            }
+            var result = new SyncResult(success, dryRun, targetName, output, error, startedAt);
+
+            if (!dryRun)
+            {
+                await WriteMarkerAsync(result, cancellationToken);
+                if (success)
+                    await CompleteOperationsAsync(operations, startedAt);
+                else
+                    await FailOperationsAsync(operations, error ?? "rsync failed.");
+            }
+            return result;
         }
-        return result;
+        catch (OperationCanceledException ex)
+        {
+            await CancelOperationsAsync(operations, ex.Message);
+            throw;
+        }
+        finally
+        {
+            foreach (var targetLock in targetLocks.AsEnumerable().Reverse())
+                await targetLock.DisposeAsync();
+            foreach (var operation in operations)
+                await operation.DisposeAsync();
+        }
     }
 
-    private async Task RecordSyncAsync(SyncResult result, CancellationToken cancellationToken)
+    private static async Task CompleteOperationsAsync(
+        IEnumerable<HistoryOperationScope> operations,
+        DateTime startedAt)
     {
-        IEnumerable<string> targetNames = result.TargetName is null
-            ? _config.AllTargets().Select(target => target.Name)
-            : new[] { result.TargetName };
-        foreach (var targetName in targetNames)
+        var durationMs = Math.Max(0, (long)(DateTime.UtcNow - startedAt).TotalMilliseconds);
+        foreach (var operation in operations)
         {
-            var completedAt = DateTimeOffset.UtcNow;
-            var startedAt = new DateTimeOffset(
-                DateTime.SpecifyKind(result.StartedAt, DateTimeKind.Utc));
-            await _history.AddRecordAsync(new HistoryRecord
-            {
-                TargetName = targetName,
-                OperationType = HistoryOperationType.Sync,
-                Status = result.Success
-                    ? HistoryOperationStatus.Succeeded
-                    : HistoryOperationStatus.Failed,
-                StartedAt = startedAt,
-                UpdatedAt = completedAt,
-                CompletedAt = completedAt,
-                FileSizeBytes = 0,
-                DurationMs = Math.Max(0, (long)(completedAt - startedAt).TotalMilliseconds),
-                ErrorMessage = result.ErrorMessage
-            }, cancellationToken);
+            await operation.CompleteAsync(new HistoryOperationCompletion(
+                FileSizeBytes: 0,
+                DurationMs: durationMs));
         }
+    }
+
+    private static async Task FailOperationsAsync(
+        IEnumerable<HistoryOperationScope> operations,
+        string errorMessage)
+    {
+        foreach (var operation in operations)
+            await operation.FailAsync(errorMessage);
+    }
+
+    private static async Task CancelOperationsAsync(
+        IEnumerable<HistoryOperationScope> operations,
+        string errorMessage)
+    {
+        foreach (var operation in operations)
+            await operation.CancelAsync(errorMessage);
     }
 
     private async Task WriteMarkerAsync(SyncResult result, CancellationToken cancellationToken)

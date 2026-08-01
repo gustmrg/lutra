@@ -29,8 +29,8 @@
 | Phase | Deliverable | Status | Review |
 |---|---|---|---|
 | 1 | Generic Lutra database foundation and release packaging | Done | Approved 2026-08-01 |
-| 2 | Automatic migration and production cutover | Done | Pending |
-| 3 | Persistent states, leases, and safe sync coordination | TODO | — |
+| 2 | Automatic migration and production cutover | Done | Approved 2026-08-01 |
+| 3 | Persistent states, leases, and safe sync coordination | Done | Pending |
 | 4 | Linux process tests, documentation, and final release verification | TODO | — |
 
 When a phase is complete, use exactly `Done` in the Status column. A phase may
@@ -542,6 +542,28 @@ remains compatible.
 **Phase 3 gate**: all three live states are observable concurrently; killed or
 abandoned operations recover to Interrupted; terminal consumers cannot mistake
 active rows for successes/failures; sync never reads an actively written target.
+
+**Phase 3 verification (2026-08-01)**:
+
+- `dotnet test Lutra.slnx --configuration Release`: 38 passed, 0 failed.
+- Lifecycle tests cover all active/terminal states, valid transitions,
+  terminal and foreign/stale-lease rejection, heartbeat renewal, fake-time
+  expiry, best-effort scope interruption, cancellation, and active-row pruning.
+- Integration tests observe `Creating` during a blocked backup and `Uploading`
+  during blocked rsync, verify `Verifying` failure transitions, and prove a
+  finalized artifact plus sidecars survives history completion failure and is
+  visible to reconciliation.
+- Busy full sync acquires target locks in stable order, releases earlier locks,
+  launches no rsync process, and records all requested rows as failed with a
+  retry-later message. Target and full-root state exclusions remain covered.
+- Health analysis excludes active operations while treating cancelled and
+  interrupted terminal attempts as failures. Retention and cleanup preserve
+  active leases and successful-backup selection remains terminal-only.
+- CLI smoke rendered simultaneous `CREATING`, `VERIFYING`, and `UPLOADING`
+  rows with live duration. Linux x64/arm64 publishes each contain one
+  executable and no `libe_sqlite3.so`; package audit is clean at `2.1.12`.
+- JSON mutation and database snapshot/export searches returned no matches;
+  `bash -n setup.sh` and `git diff --check` passed.
 
 ### Phase 4: Prove Linux process concurrency and finish the release contract
 

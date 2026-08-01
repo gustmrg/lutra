@@ -246,7 +246,12 @@ public class BackupOrchestrator
         string? finalFilePath = null;
         string? fileName = null;
         var finalMoved = false;
-        var artifactRecorded = false;
+        var artifactFinalized = false;
+        await using var operation = await HistoryOperationScope.BeginAsync(
+            _historyService,
+            target.Name,
+            HistoryOperationType.Backup,
+            cancellationToken);
 
         try
         {
@@ -292,24 +297,14 @@ public class BackupOrchestrator
 
             await BackupIntegrity.WriteChecksumFileAsync(finalFilePath, sha256, cancellationToken);
             await BackupIntegrity.WriteManifestAsync(finalFilePath, manifest, cancellationToken);
+            artifactFinalized = true;
 
-            var completedAt = new DateTimeOffset(startTime).Add(stopwatch.Elapsed);
-            var record = new HistoryRecord
-            {
-                TargetName = target.Name,
-                OperationType = HistoryOperationType.Backup,
-                Status = HistoryOperationStatus.Succeeded,
-                StartedAt = new DateTimeOffset(startTime),
-                UpdatedAt = completedAt,
-                CompletedAt = completedAt,
-                FileName = fileName,
-                FileSizeBytes = fileInfo.Length,
-                Sha256 = sha256,
-                ManifestFileName = Path.GetFileName(BackupIntegrity.GetManifestPath(finalFilePath)),
-                DurationMs = (long)stopwatch.Elapsed.TotalMilliseconds
-            };
-            await _historyService.AddRecordAsync(record, cancellationToken);
-            artifactRecorded = true;
+            await operation.CompleteAsync(new HistoryOperationCompletion(
+                FileName: fileName,
+                FileSizeBytes: fileInfo.Length,
+                Sha256: sha256,
+                ManifestFileName: Path.GetFileName(BackupIntegrity.GetManifestPath(finalFilePath)),
+                DurationMs: (long)stopwatch.Elapsed.TotalMilliseconds));
 
             try
             {
@@ -336,27 +331,24 @@ public class BackupOrchestrator
             stopwatch.Stop();
             DeleteIfExists(tempFilePath);
 
-            if (finalMoved && !artifactRecorded && finalFilePath is not null && fileName is not null)
+            if (finalMoved && !artifactFinalized && finalFilePath is not null && fileName is not null)
             {
                 DeleteIfExists(finalFilePath);
                 DeleteIfExists(BackupIntegrity.GetChecksumPath(finalFilePath));
                 DeleteIfExists(BackupIntegrity.GetManifestPath(finalFilePath));
             }
 
-            var completedAt = new DateTimeOffset(startTime).Add(stopwatch.Elapsed);
-            var failureRecord = new HistoryRecord
+            try
             {
-                TargetName = target.Name,
-                OperationType = HistoryOperationType.Backup,
-                Status = HistoryOperationStatus.Failed,
-                StartedAt = new DateTimeOffset(startTime),
-                UpdatedAt = completedAt,
-                CompletedAt = completedAt,
-                FileSizeBytes = 0,
-                DurationMs = (long)stopwatch.Elapsed.TotalMilliseconds,
-                ErrorMessage = ex.Message
-            };
-            await _historyService.AddRecordAsync(failureRecord, cancellationToken);
+                if (ex is OperationCanceledException || cancellationToken.IsCancellationRequested)
+                    await operation.CancelAsync(ex.Message, (long)stopwatch.Elapsed.TotalMilliseconds);
+                else
+                    await operation.FailAsync(ex.Message, (long)stopwatch.Elapsed.TotalMilliseconds);
+            }
+            catch
+            {
+                // Scope disposal makes one final best-effort Interrupted transition.
+            }
 
             return new BackupResult
             {

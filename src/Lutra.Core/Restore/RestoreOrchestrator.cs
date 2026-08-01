@@ -176,6 +176,11 @@ public class RestoreOrchestrator
         var checksumValid = false;
         IRestoreProvider? provider = null;
         string? testDatabase = null;
+        await using var operation = await HistoryOperationScope.BeginAsync(
+            _historyService,
+            target.Name,
+            HistoryOperationType.Verify,
+            cancellationToken);
 
         try
         {
@@ -227,7 +232,7 @@ public class RestoreOrchestrator
                 Duration = stopwatch.Elapsed,
                 ValidationDetails = BuildValidationDetails(provider.Type, validationOutput)
             };
-            await RecordVerificationAsync(target, backupFilePath, successResult, cancellationToken);
+            await TryCompleteVerificationAsync(operation, backupFilePath, successResult);
             return successResult;
         }
         catch (Exception ex)
@@ -246,7 +251,8 @@ public class RestoreOrchestrator
                 Duration = stopwatch.Elapsed,
                 ErrorMessage = ex.Message
             };
-            await RecordVerificationAsync(target, backupFilePath, failureResult, cancellationToken);
+            await TryFinishFailedVerificationAsync(
+                operation, failureResult, ex, cancellationToken.IsCancellationRequested);
             return failureResult;
         }
     }
@@ -362,6 +368,11 @@ public class RestoreOrchestrator
     {
         var stopwatch = Stopwatch.StartNew();
         var checksumValid = false;
+        await using var operation = await HistoryOperationScope.BeginAsync(
+            _historyService,
+            target.Name,
+            HistoryOperationType.Verify,
+            cancellationToken);
 
         try
         {
@@ -388,7 +399,7 @@ public class RestoreOrchestrator
                 Duration = stopwatch.Elapsed,
                 ValidationDetails = $"Archive is readable and contains {entryCount} entries."
             };
-            await RecordVerificationAsync(target, archiveFilePath, successResult, cancellationToken);
+            await TryCompleteVerificationAsync(operation, archiveFilePath, successResult);
             return successResult;
         }
         catch (Exception ex)
@@ -403,7 +414,8 @@ public class RestoreOrchestrator
                 Duration = stopwatch.Elapsed,
                 ErrorMessage = ex.Message
             };
-            await RecordVerificationAsync(target, archiveFilePath, failureResult, cancellationToken);
+            await TryFinishFailedVerificationAsync(
+                operation, failureResult, ex, cancellationToken.IsCancellationRequested);
             return failureResult;
         }
     }
@@ -524,31 +536,36 @@ public class RestoreOrchestrator
         }
     }
 
-    private async Task RecordVerificationAsync(
-        IBackupTarget target,
+    private static async Task TryCompleteVerificationAsync(
+        HistoryOperationScope operation,
         string backupFilePath,
-        VerifyResult result,
-        CancellationToken cancellationToken)
+        VerifyResult result)
     {
         try
         {
-            var completedAt = DateTimeOffset.UtcNow;
-            var record = new HistoryRecord
-            {
-                TargetName = target.Name,
-                OperationType = HistoryOperationType.Verify,
-                Status = result.Success
-                    ? HistoryOperationStatus.Succeeded
-                    : HistoryOperationStatus.Failed,
-                StartedAt = completedAt - result.Duration,
-                UpdatedAt = completedAt,
-                CompletedAt = completedAt,
-                FileName = Path.GetFileName(backupFilePath),
-                FileSizeBytes = File.Exists(backupFilePath) ? new FileInfo(backupFilePath).Length : 0,
-                DurationMs = (long)result.Duration.TotalMilliseconds,
-                ErrorMessage = result.ErrorMessage
-            };
-            await _historyService.AddRecordAsync(record, cancellationToken);
+            await operation.CompleteAsync(new HistoryOperationCompletion(
+                FileName: Path.GetFileName(backupFilePath),
+                FileSizeBytes: File.Exists(backupFilePath) ? new FileInfo(backupFilePath).Length : 0,
+                DurationMs: (long)result.Duration.TotalMilliseconds));
+        }
+        catch
+        {
+            // A history write failure must not mask the verification result.
+        }
+    }
+
+    private static async Task TryFinishFailedVerificationAsync(
+        HistoryOperationScope operation,
+        VerifyResult result,
+        Exception exception,
+        bool callerCancelled)
+    {
+        try
+        {
+            if (exception is OperationCanceledException || callerCancelled)
+                await operation.CancelAsync(exception.Message, (long)result.Duration.TotalMilliseconds);
+            else
+                await operation.FailAsync(exception.Message, (long)result.Duration.TotalMilliseconds);
         }
         catch
         {

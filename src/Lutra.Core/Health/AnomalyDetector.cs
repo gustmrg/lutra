@@ -16,7 +16,8 @@ public class AnomalyDetector
     {
         var findings = new List<HealthFinding>();
 
-        if (records.Count == 0)
+        var terminalRecords = records.Where(record => record.Status.IsTerminal()).ToList();
+        if (terminalRecords.Count == 0)
         {
             findings.Add(new HealthFinding
             {
@@ -28,7 +29,7 @@ public class AnomalyDetector
             return BuildReport(target.Name, findings, 0);
         }
 
-        var orderedRecords = records.OrderByDescending(r => r.StartedAt).ToList();
+        var orderedRecords = terminalRecords.OrderByDescending(r => r.StartedAt).ToList();
         var successRecords = orderedRecords
             .Where(r => r.Status == HistoryOperationStatus.Succeeded)
             .ToList();
@@ -67,7 +68,7 @@ public class AnomalyDetector
         if (intervalHours.HasValue && successRecords.Count >= 1)
             findings.AddRange(DetectMissedSchedules(successRecords, intervalHours.Value));
 
-        return BuildReport(target.Name, findings, records.Count);
+        return BuildReport(target.Name, findings, terminalRecords.Count);
     }
 
     private List<HealthFinding> DetectSizeAnomalies(IReadOnlyList<HistoryRecord> window)

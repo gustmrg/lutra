@@ -3,6 +3,7 @@ using System.Text.Json.Serialization;
 using Lutra.CLI.Infrastructure;
 using Lutra.Core.Configuration;
 using Lutra.Core.Health;
+using Lutra.Core.History;
 using Spectre.Console;
 using Spectre.Console.Cli;
 
@@ -29,7 +30,8 @@ public sealed class HealthCommand : AsyncCommand<HealthSettings>
             {
                 var records = await historyService.GetRecordsByTargetAsync(target.Name);
                 var backupRecords = records
-                    .Where(r => r.OperationType == Lutra.Core.History.HistoryOperationType.Backup)
+                    .Where(r => r.OperationType == HistoryOperationType.Backup
+                        && r.Status.IsTerminal())
                     .ToList();
                 var report = detector.Analyze(backupRecords, target);
                 report.Findings.AddRange(await artifactChecker.CheckAsync(target, backupRecords));

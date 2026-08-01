@@ -103,7 +103,7 @@ public sealed class SqliteHistoryRepositoryTests
         var successfulBackup = TerminalRecord("target", HistoryOperationType.Backup, HistoryOperationStatus.Succeeded, old);
         var failedBackup = TerminalRecord("target", HistoryOperationType.Backup, HistoryOperationStatus.Failed, old);
         var verification = TerminalRecord("target", HistoryOperationType.Verify, HistoryOperationStatus.Succeeded, old);
-        var otherTarget = TerminalRecord("other", HistoryOperationType.Sync, HistoryOperationStatus.Failed, recent);
+        var otherTarget = TerminalRecord("other", HistoryOperationType.Backup, HistoryOperationStatus.Failed, recent);
 
         foreach (var record in new[] { successfulBackup, failedBackup, verification, otherTarget })
             await repository.AddRecordAsync(record);

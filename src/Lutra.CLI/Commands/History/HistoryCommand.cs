@@ -43,15 +43,28 @@ public sealed class HistoryCommand : AsyncCommand<TargetSettings>
 
             foreach (var record in records)
             {
-                var status = record.Status == HistoryOperationStatus.Succeeded
-                    ? "[green]OK[/]"
-                    : $"[red]FAILED[/] {record.ErrorMessage?.EscapeMarkup()}";
+                var status = record.Status switch
+                {
+                    HistoryOperationStatus.Creating => "[blue]CREATING[/]",
+                    HistoryOperationStatus.Verifying => "[blue]VERIFYING[/]",
+                    HistoryOperationStatus.Uploading => "[blue]UPLOADING[/]",
+                    HistoryOperationStatus.Succeeded => "[green]OK[/]",
+                    HistoryOperationStatus.Failed => $"[red]FAILED[/] {record.ErrorMessage?.EscapeMarkup()}",
+                    HistoryOperationStatus.Cancelled => $"[yellow]CANCELLED[/] {record.ErrorMessage?.EscapeMarkup()}",
+                    HistoryOperationStatus.Interrupted => $"[yellow]INTERRUPTED[/] {record.ErrorMessage?.EscapeMarkup()}",
+                    _ => throw new ArgumentOutOfRangeException()
+                };
 
                 var size = record.Status == HistoryOperationStatus.Succeeded
                     && record.OperationType == HistoryOperationType.Backup
                     ? FormatBytes(record.FileSizeBytes ?? 0)
                     : "-";
-                var duration = record.OperationType == HistoryOperationType.Sync ? "-" : $"{record.DurationMs}ms";
+                var durationMs = record.Status.IsActive()
+                    ? Math.Max(0, (long)(DateTimeOffset.UtcNow - record.StartedAt).TotalMilliseconds)
+                    : record.DurationMs;
+                var duration = record.OperationType == HistoryOperationType.Sync && !record.Status.IsActive()
+                    ? "-"
+                    : $"{durationMs ?? 0}ms";
 
                 table.AddRow(
                     record.TargetName.EscapeMarkup(),
