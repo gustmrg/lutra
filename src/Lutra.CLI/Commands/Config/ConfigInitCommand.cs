@@ -13,6 +13,7 @@ public sealed class ConfigInitCommand : AsyncCommand<ConfigInitSettings>
             var configPath = ConfigFileHelper.ResolveConfigPath(settings.ConfigPath);
             var envFilePath = ConfigFileHelper.ResolveEnvPath(settings.EnvFilePath);
             var backupDirectory = ConfigTemplates.GetDefaultBackupDirectory();
+            var stateDirectory = ConfigTemplates.GetDefaultStateDirectory();
 
             var configDir = Path.GetDirectoryName(Path.GetFullPath(configPath))!;
             var envDir = Path.GetDirectoryName(Path.GetFullPath(envFilePath))!;
@@ -22,11 +23,12 @@ public sealed class ConfigInitCommand : AsyncCommand<ConfigInitSettings>
             if (envDir != configDir)
                 ConfigFileHelper.CreateDirectoryIfNeeded(envDir);
             ConfigFileHelper.CreateDirectoryIfNeeded(backupDirectory);
+            ConfigFileHelper.CreateDirectoryIfNeeded(stateDirectory);
 
             // Write template files
             var configWritten = ConfigFileHelper.WriteFile(
                 configPath,
-                ConfigTemplates.GenerateYamlTemplate(backupDirectory),
+                ConfigTemplates.GenerateYamlTemplate(backupDirectory, stateDirectory),
                 settings.Force);
 
             var envWritten = ConfigFileHelper.WriteFile(

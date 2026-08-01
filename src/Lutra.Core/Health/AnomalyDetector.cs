@@ -12,7 +12,7 @@ public class AnomalyDetector
         _config = config;
     }
 
-    public HealthReport Analyze(IReadOnlyList<BackupRecord> records, IBackupTarget target)
+    public HealthReport Analyze(IReadOnlyList<HistoryRecord> records, IBackupTarget target)
     {
         var findings = new List<HealthFinding>();
 
@@ -28,8 +28,10 @@ public class AnomalyDetector
             return BuildReport(target.Name, findings, 0);
         }
 
-        var orderedRecords = records.OrderByDescending(r => r.Timestamp).ToList();
-        var successRecords = orderedRecords.Where(r => r.Success).ToList();
+        var orderedRecords = records.OrderByDescending(r => r.StartedAt).ToList();
+        var successRecords = orderedRecords
+            .Where(r => r.Status == HistoryOperationStatus.Succeeded)
+            .ToList();
 
         findings.AddRange(DetectFailureStreaks(orderedRecords));
         findings.AddRange(DetectZeroSizeBackups(successRecords));
@@ -68,36 +70,37 @@ public class AnomalyDetector
         return BuildReport(target.Name, findings, records.Count);
     }
 
-    private List<HealthFinding> DetectSizeAnomalies(IReadOnlyList<BackupRecord> window)
+    private List<HealthFinding> DetectSizeAnomalies(IReadOnlyList<HistoryRecord> window)
     {
         var findings = new List<HealthFinding>();
         if (window.Count < 2)
             return findings;
 
         var latest = window[0];
-        var previous = window.Skip(1).Select(r => (double)r.FileSizeBytes).ToList();
+        var latestSize = latest.FileSizeBytes ?? 0;
+        var previous = window.Skip(1).Select(r => (double)(r.FileSizeBytes ?? 0)).ToList();
         var mean = StatisticsHelper.Mean(previous);
         var stdDev = StatisticsHelper.StandardDeviation(previous);
 
         if (stdDev > 0)
         {
-            var zScore = Math.Abs(latest.FileSizeBytes - mean) / stdDev;
+            var zScore = Math.Abs(latestSize - mean) / stdDev;
             if (zScore >= _config.SizeDeviationThreshold)
             {
-                var pctChange = StatisticsHelper.PercentChange(mean, latest.FileSizeBytes);
+                var pctChange = StatisticsHelper.PercentChange(mean, latestSize);
                 findings.Add(new HealthFinding
                 {
                     Type = FindingType.SizeAnomaly,
                     Severity = Math.Abs(pctChange) > 80 ? Severity.Critical : Severity.Warning,
                     Message = $"Backup size is {pctChange:+0.0;-0.0}% compared to the recent average.",
-                    Detail = $"Expected ~{FormatBytes((long)mean)}, got {FormatBytes(latest.FileSizeBytes)} (z-score: {zScore:F1})",
-                    RelevantTimestamp = latest.Timestamp
+                    Detail = $"Expected ~{FormatBytes((long)mean)}, got {FormatBytes(latestSize)} (z-score: {zScore:F1})",
+                    RelevantTimestamp = latest.StartedAt.UtcDateTime
                 });
             }
         }
-        else if (latest.FileSizeBytes != (long)mean && mean > 0)
+        else if (latestSize != (long)mean && mean > 0)
         {
-            var pctChange = StatisticsHelper.PercentChange(mean, latest.FileSizeBytes);
+            var pctChange = StatisticsHelper.PercentChange(mean, latestSize);
             if (Math.Abs(pctChange) > 50)
             {
                 findings.Add(new HealthFinding
@@ -105,8 +108,8 @@ public class AnomalyDetector
                     Type = FindingType.SizeAnomaly,
                     Severity = Severity.Warning,
                     Message = $"Backup size changed {pctChange:+0.0;-0.0}% from the consistent previous size.",
-                    Detail = $"Previous: {FormatBytes((long)mean)}, Latest: {FormatBytes(latest.FileSizeBytes)}",
-                    RelevantTimestamp = latest.Timestamp
+                    Detail = $"Previous: {FormatBytes((long)mean)}, Latest: {FormatBytes(latestSize)}",
+                    RelevantTimestamp = latest.StartedAt.UtcDateTime
                 });
             }
         }
@@ -114,45 +117,46 @@ public class AnomalyDetector
         return findings;
     }
 
-    private List<HealthFinding> DetectDurationAnomalies(IReadOnlyList<BackupRecord> window)
+    private List<HealthFinding> DetectDurationAnomalies(IReadOnlyList<HistoryRecord> window)
     {
         var findings = new List<HealthFinding>();
         if (window.Count < 2)
             return findings;
 
         var latest = window[0];
-        var previous = window.Skip(1).Select(r => (double)r.DurationMs).ToList();
+        var latestDuration = latest.DurationMs ?? 0;
+        var previous = window.Skip(1).Select(r => (double)(r.DurationMs ?? 0)).ToList();
         var mean = StatisticsHelper.Mean(previous);
         var stdDev = StatisticsHelper.StandardDeviation(previous);
 
         if (stdDev <= 0)
             return findings;
 
-        var zScore = Math.Abs(latest.DurationMs - mean) / stdDev;
+        var zScore = Math.Abs(latestDuration - mean) / stdDev;
         if (zScore >= _config.DurationDeviationThreshold)
         {
-            var pctChange = StatisticsHelper.PercentChange(mean, latest.DurationMs);
+            var pctChange = StatisticsHelper.PercentChange(mean, latestDuration);
             findings.Add(new HealthFinding
             {
                 Type = FindingType.DurationAnomaly,
                 Severity = Severity.Warning,
                 Message = $"Backup duration is {pctChange:+0.0;-0.0}% compared to the recent average.",
-                Detail = $"Expected ~{FormatDuration((long)mean)}, took {FormatDuration(latest.DurationMs)} (z-score: {zScore:F1})",
-                RelevantTimestamp = latest.Timestamp
+                Detail = $"Expected ~{FormatDuration((long)mean)}, took {FormatDuration(latestDuration)} (z-score: {zScore:F1})",
+                RelevantTimestamp = latest.StartedAt.UtcDateTime
             });
         }
 
         return findings;
     }
 
-    private List<HealthFinding> DetectFailureStreaks(IReadOnlyList<BackupRecord> orderedRecords)
+    private List<HealthFinding> DetectFailureStreaks(IReadOnlyList<HistoryRecord> orderedRecords)
     {
         var findings = new List<HealthFinding>();
 
         var consecutiveFailures = 0;
         foreach (var record in orderedRecords)
         {
-            if (!record.Success)
+            if (record.Status != HistoryOperationStatus.Succeeded)
                 consecutiveFailures++;
             else
                 break;
@@ -165,8 +169,8 @@ public class AnomalyDetector
                 Type = FindingType.FailureStreak,
                 Severity = Severity.Critical,
                 Message = $"{consecutiveFailures} consecutive backup failures.",
-                Detail = orderedRecords.First(r => !r.Success).ErrorMessage,
-                RelevantTimestamp = orderedRecords[0].Timestamp
+                Detail = orderedRecords.First(r => r.Status != HistoryOperationStatus.Succeeded).ErrorMessage,
+                RelevantTimestamp = orderedRecords[0].StartedAt.UtcDateTime
             });
         }
         else if (consecutiveFailures >= _config.FailureStreakWarning)
@@ -176,8 +180,8 @@ public class AnomalyDetector
                 Type = FindingType.FailureStreak,
                 Severity = Severity.Warning,
                 Message = $"{consecutiveFailures} consecutive backup failures.",
-                Detail = orderedRecords.First(r => !r.Success).ErrorMessage,
-                RelevantTimestamp = orderedRecords[0].Timestamp
+                Detail = orderedRecords.First(r => r.Status != HistoryOperationStatus.Succeeded).ErrorMessage,
+                RelevantTimestamp = orderedRecords[0].StartedAt.UtcDateTime
             });
         }
 
@@ -185,12 +189,12 @@ public class AnomalyDetector
     }
 
     private List<HealthFinding> DetectMissedSchedules(
-        IReadOnlyList<BackupRecord> successRecords, double expectedIntervalHours)
+        IReadOnlyList<HistoryRecord> successRecords, double expectedIntervalHours)
     {
         var findings = new List<HealthFinding>();
 
         var latest = successRecords[0];
-        var hoursSinceLastBackup = (DateTime.UtcNow - latest.Timestamp).TotalHours;
+        var hoursSinceLastBackup = (DateTimeOffset.UtcNow - latest.StartedAt).TotalHours;
         var threshold = expectedIntervalHours * _config.MissedScheduleMultiplier;
 
         if (hoursSinceLastBackup > threshold)
@@ -200,14 +204,14 @@ public class AnomalyDetector
                 Type = FindingType.MissedSchedule,
                 Severity = Severity.Warning,
                 Message = $"No successful backup in {hoursSinceLastBackup:F0} hours (expected every {expectedIntervalHours:F0}h).",
-                Detail = $"Last successful backup: {latest.Timestamp:yyyy-MM-dd HH:mm:ss} UTC",
-                RelevantTimestamp = latest.Timestamp
+                Detail = $"Last successful backup: {latest.StartedAt:yyyy-MM-dd HH:mm:ss} UTC",
+                RelevantTimestamp = latest.StartedAt.UtcDateTime
             });
         }
 
         for (var i = 0; i < successRecords.Count - 1; i++)
         {
-            var gap = (successRecords[i].Timestamp - successRecords[i + 1].Timestamp).TotalHours;
+            var gap = (successRecords[i].StartedAt - successRecords[i + 1].StartedAt).TotalHours;
             if (gap > threshold)
             {
                 findings.Add(new HealthFinding
@@ -215,8 +219,8 @@ public class AnomalyDetector
                     Type = FindingType.MissedSchedule,
                     Severity = Severity.Info,
                     Message = $"Gap of {gap:F0} hours detected between backups.",
-                    Detail = $"Between {successRecords[i + 1].Timestamp:yyyy-MM-dd HH:mm} and {successRecords[i].Timestamp:yyyy-MM-dd HH:mm} UTC",
-                    RelevantTimestamp = successRecords[i].Timestamp
+                    Detail = $"Between {successRecords[i + 1].StartedAt:yyyy-MM-dd HH:mm} and {successRecords[i].StartedAt:yyyy-MM-dd HH:mm} UTC",
+                    RelevantTimestamp = successRecords[i].StartedAt.UtcDateTime
                 });
             }
         }
@@ -224,14 +228,14 @@ public class AnomalyDetector
         return findings;
     }
 
-    private List<HealthFinding> DetectSizeTrend(IReadOnlyList<BackupRecord> window)
+    private List<HealthFinding> DetectSizeTrend(IReadOnlyList<HistoryRecord> window)
     {
         var findings = new List<HealthFinding>();
         if (window.Count < _config.MinSamples)
             return findings;
 
         // Oldest first for regression
-        var sizes = window.Select(r => (double)r.FileSizeBytes).Reverse().ToList();
+        var sizes = window.Select(r => (double)(r.FileSizeBytes ?? 0)).Reverse().ToList();
         var slope = StatisticsHelper.LinearRegressionSlope(sizes);
         var mean = StatisticsHelper.Mean(sizes);
 
@@ -248,14 +252,14 @@ public class AnomalyDetector
                 Type = FindingType.SizeTrend,
                 Severity = Severity.Info,
                 Message = $"Backup size is consistently {direction} ({slopePercentPerBackup:+0.0;-0.0}% per backup).",
-                Detail = $"Oldest: {FormatBytes(window[^1].FileSizeBytes)}, Latest: {FormatBytes(window[0].FileSizeBytes)} over {window.Count} backups"
+                Detail = $"Oldest: {FormatBytes(window[^1].FileSizeBytes ?? 0)}, Latest: {FormatBytes(window[0].FileSizeBytes ?? 0)} over {window.Count} backups"
             });
         }
 
         return findings;
     }
 
-    private static List<HealthFinding> DetectZeroSizeBackups(IReadOnlyList<BackupRecord> successRecords)
+    private static List<HealthFinding> DetectZeroSizeBackups(IReadOnlyList<HistoryRecord> successRecords)
     {
         var findings = new List<HealthFinding>();
 
@@ -267,7 +271,7 @@ public class AnomalyDetector
                 Severity = Severity.Critical,
                 Message = "Backup reported success but file size is 0 bytes.",
                 Detail = $"File: {record.FileName}",
-                RelevantTimestamp = record.Timestamp
+                RelevantTimestamp = record.StartedAt.UtcDateTime
             });
         }
 

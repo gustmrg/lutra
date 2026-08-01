@@ -28,7 +28,9 @@ public sealed class HealthCommand : AsyncCommand<HealthSettings>
             foreach (var target in targets)
             {
                 var records = await historyService.GetRecordsByTargetAsync(target.Name);
-                var backupRecords = records.Where(r => r.RecordType is null).ToList();
+                var backupRecords = records
+                    .Where(r => r.OperationType == Lutra.Core.History.HistoryOperationType.Backup)
+                    .ToList();
                 var report = detector.Analyze(backupRecords, target);
                 report.Findings.AddRange(await artifactChecker.CheckAsync(target, backupRecords));
                 reports.Add(report);

@@ -9,11 +9,16 @@ public sealed class RsyncService
 {
     private readonly BackupConfig _config;
     private readonly IBackupHistoryService _history;
+    private readonly IRsyncProcessRunner _processRunner;
 
-    public RsyncService(BackupConfig config, IBackupHistoryService history)
+    public RsyncService(
+        BackupConfig config,
+        IBackupHistoryService history,
+        IRsyncProcessRunner? processRunner = null)
     {
         _config = config;
         _history = history;
+        _processRunner = processRunner ?? new SystemRsyncProcessRunner();
     }
 
     public async Task<SyncValidationResult> ValidateAsync(CancellationToken cancellationToken = default)
@@ -22,12 +27,12 @@ public sealed class RsyncService
         if (!File.Exists(sync.SshKeyPath))
             return new SyncValidationResult(false, $"SSH key does not exist: {sync.SshKeyPath}");
 
-        var localRsync = await RunAsync("rsync", ["--version"], cancellationToken);
+        var localRsync = await _processRunner.RunAsync("rsync", ["--version"], cancellationToken);
         if (localRsync.ExitCode != 0)
             return new SyncValidationResult(false, "rsync is not installed locally.");
 
         var remoteCommand = $"command -v rsync >/dev/null && mkdir -p {ShellQuote(sync.DestinationPath)} && test -w {ShellQuote(sync.DestinationPath)}";
-        var ssh = await RunAsync("ssh", BuildSshArguments(sync, remoteCommand), cancellationToken);
+        var ssh = await _processRunner.RunAsync("ssh", BuildSshArguments(sync, remoteCommand), cancellationToken);
         return ssh.ExitCode == 0
             ? new SyncValidationResult(true, "SSH connectivity, remote rsync, and destination write access are available.")
             : new SyncValidationResult(false, $"Remote validation failed: {SafeError(ssh)}");
@@ -70,13 +75,15 @@ public sealed class RsyncService
             args.Add("--dry-run");
         if (delete || sync.Delete)
             args.Add("--delete");
+        if (targetName is null)
+            AddFullRootExclusions(args);
         args.AddRange(sync.ExtraArgs);
         args.Add("-e");
         args.Add(BuildRsyncSshCommand(sync));
         args.Add(source.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar);
         args.Add($"{sync.User}@{sync.Host}:{destination.TrimEnd('/')}/");
 
-        var process = await RunAsync("rsync", args, cancellationToken);
+        var process = await _processRunner.RunAsync("rsync", args, cancellationToken);
         var success = process.ExitCode == 0;
         var output = process.StdOut;
         var error = success ? null : SafeError(process);
@@ -85,7 +92,7 @@ public sealed class RsyncService
             var walArgs = args.ToList();
             walArgs[^2] = walSource.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
             walArgs[^1] = $"{sync.User}@{sync.Host}:{walDestination!.TrimEnd('/')}/";
-            var walProcess = await RunAsync("rsync", walArgs, cancellationToken);
+            var walProcess = await _processRunner.RunAsync("rsync", walArgs, cancellationToken);
             success = walProcess.ExitCode == 0;
             output = output + walProcess.StdOut;
             if (!success)
@@ -108,16 +115,22 @@ public sealed class RsyncService
             : new[] { result.TargetName };
         foreach (var targetName in targetNames)
         {
-            await _history.AddRecordAsync(new BackupRecord
+            var completedAt = DateTimeOffset.UtcNow;
+            var startedAt = new DateTimeOffset(
+                DateTime.SpecifyKind(result.StartedAt, DateTimeKind.Utc));
+            await _history.AddRecordAsync(new HistoryRecord
             {
                 TargetName = targetName,
-                Timestamp = result.StartedAt,
-                FileName = string.Empty,
+                OperationType = HistoryOperationType.Sync,
+                Status = result.Success
+                    ? HistoryOperationStatus.Succeeded
+                    : HistoryOperationStatus.Failed,
+                StartedAt = startedAt,
+                UpdatedAt = completedAt,
+                CompletedAt = completedAt,
                 FileSizeBytes = 0,
-                DurationMs = 0,
-                Success = result.Success,
-                ErrorMessage = result.ErrorMessage,
-                RecordType = "sync"
+                DurationMs = Math.Max(0, (long)(completedAt - startedAt).TotalMilliseconds),
+                ErrorMessage = result.ErrorMessage
             }, cancellationToken);
         }
     }
@@ -151,12 +164,59 @@ public sealed class RsyncService
     private static string ShellQuote(string value)
         => "'" + value.Replace("'", "'\\''", StringComparison.Ordinal) + "'";
 
-    private static string SafeError(ProcessCapture result)
+    private void AddFullRootExclusions(List<string> arguments)
+    {
+        string[] exclusions =
+        [
+            "/backup-history.json",
+            "/.backup-history.lock",
+            "/.locks/",
+            "*.tmp",
+            "/lutra.db",
+            "/lutra.db-wal",
+            "/lutra.db-shm"
+        ];
+        foreach (var exclusion in exclusions)
+        {
+            arguments.Add("--exclude");
+            arguments.Add(exclusion);
+        }
+
+        if (!string.IsNullOrWhiteSpace(_config.StateDirectory))
+        {
+            var backupRoot = Path.GetFullPath(_config.BackupDirectory);
+            var stateRoot = Path.GetFullPath(_config.StateDirectory);
+            var relative = Path.GetRelativePath(backupRoot, stateRoot);
+            if (!relative.Equals(".", StringComparison.Ordinal)
+                && !relative.StartsWith(".." + Path.DirectorySeparatorChar, StringComparison.Ordinal)
+                && !Path.IsPathRooted(relative))
+            {
+                arguments.Add("--exclude");
+                arguments.Add("/" + relative.Replace(Path.DirectorySeparatorChar, '/') + "/");
+            }
+        }
+    }
+
+    private static string SafeError(RsyncProcessResult result)
         => string.IsNullOrWhiteSpace(result.StdErr)
             ? $"command exited with code {result.ExitCode}"
             : result.StdErr.Trim();
 
-    private static async Task<ProcessCapture> RunAsync(
+}
+
+public interface IRsyncProcessRunner
+{
+    Task<RsyncProcessResult> RunAsync(
+        string fileName,
+        IReadOnlyList<string> arguments,
+        CancellationToken cancellationToken);
+}
+
+public sealed record RsyncProcessResult(int ExitCode, string StdOut, string StdErr);
+
+internal sealed class SystemRsyncProcessRunner : IRsyncProcessRunner
+{
+    public async Task<RsyncProcessResult> RunAsync(
         string fileName,
         IReadOnlyList<string> arguments,
         CancellationToken cancellationToken)
@@ -176,19 +236,17 @@ public sealed class RsyncService
 
             using var process = Process.Start(startInfo);
             if (process is null)
-                return new ProcessCapture(-1, "", "Failed to start process.");
+                return new RsyncProcessResult(-1, "", "Failed to start process.");
             var stdout = process.StandardOutput.ReadToEndAsync(cancellationToken);
             var stderr = process.StandardError.ReadToEndAsync(cancellationToken);
             await process.WaitForExitAsync(cancellationToken);
-            return new ProcessCapture(process.ExitCode, await stdout, await stderr);
+            return new RsyncProcessResult(process.ExitCode, await stdout, await stderr);
         }
         catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or FileNotFoundException)
         {
-            return new ProcessCapture(-1, "", ex.Message);
+            return new RsyncProcessResult(-1, "", ex.Message);
         }
     }
-
-    private sealed record ProcessCapture(int ExitCode, string StdOut, string StdErr);
 }
 
 public sealed record SyncResult(

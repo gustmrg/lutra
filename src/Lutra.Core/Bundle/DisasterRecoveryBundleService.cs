@@ -49,11 +49,13 @@ public sealed class DisasterRecoveryBundleService
             foreach (var target in _config.AllTargets())
             {
                 var latest = records.FirstOrDefault(record => record.TargetName == target.Name
-                    && record.Success && record.RecordType is null && !string.IsNullOrWhiteSpace(record.FileName));
+                    && record.Status == HistoryOperationStatus.Succeeded
+                    && record.OperationType == HistoryOperationType.Backup
+                    && !string.IsNullOrWhiteSpace(record.FileName));
                 if (latest is null)
                     throw new InvalidOperationException($"Target '{target.Name}' has no successful backup to bundle.");
 
-                var source = Path.Combine(_config.BackupDirectory, target.Name, latest.FileName);
+                var source = Path.Combine(_config.BackupDirectory, target.Name, latest.FileName!);
                 if (!File.Exists(source))
                     throw new FileNotFoundException($"Latest backup for '{target.Name}' is missing: {source}");
                 var destinationDirectory = Path.Combine(staging, "backups", target.Name);
@@ -66,10 +68,12 @@ public sealed class DisasterRecoveryBundleService
             {
                 var walTarget = database.Name + "-wal";
                 var latestWal = records.FirstOrDefault(record => record.TargetName == walTarget
-                    && record.Success && record.RecordType is null && !string.IsNullOrWhiteSpace(record.FileName));
+                    && record.Status == HistoryOperationStatus.Succeeded
+                    && record.OperationType == HistoryOperationType.Backup
+                    && !string.IsNullOrWhiteSpace(record.FileName));
                 if (latestWal is null)
                     throw new InvalidOperationException($"PostgreSQL target '{database.Name}' has no WAL archive backup to bundle.");
-                var source = Path.Combine(_config.BackupDirectory, walTarget, latestWal.FileName);
+                var source = Path.Combine(_config.BackupDirectory, walTarget, latestWal.FileName!);
                 if (!File.Exists(source))
                     throw new FileNotFoundException($"Latest WAL archive for '{database.Name}' is missing: {source}");
                 CopyArtifact(source, Path.Combine(staging, "backups", walTarget));

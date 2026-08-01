@@ -293,16 +293,20 @@ public class BackupOrchestrator
             await BackupIntegrity.WriteChecksumFileAsync(finalFilePath, sha256, cancellationToken);
             await BackupIntegrity.WriteManifestAsync(finalFilePath, manifest, cancellationToken);
 
-            var record = new BackupRecord
+            var completedAt = new DateTimeOffset(startTime).Add(stopwatch.Elapsed);
+            var record = new HistoryRecord
             {
                 TargetName = target.Name,
-                Timestamp = startTime,
+                OperationType = HistoryOperationType.Backup,
+                Status = HistoryOperationStatus.Succeeded,
+                StartedAt = new DateTimeOffset(startTime),
+                UpdatedAt = completedAt,
+                CompletedAt = completedAt,
                 FileName = fileName,
                 FileSizeBytes = fileInfo.Length,
                 Sha256 = sha256,
                 ManifestFileName = Path.GetFileName(BackupIntegrity.GetManifestPath(finalFilePath)),
-                DurationMs = (long)stopwatch.Elapsed.TotalMilliseconds,
-                Success = true
+                DurationMs = (long)stopwatch.Elapsed.TotalMilliseconds
             };
             await _historyService.AddRecordAsync(record, cancellationToken);
             artifactRecorded = true;
@@ -339,14 +343,17 @@ public class BackupOrchestrator
                 DeleteIfExists(BackupIntegrity.GetManifestPath(finalFilePath));
             }
 
-            var failureRecord = new BackupRecord
+            var completedAt = new DateTimeOffset(startTime).Add(stopwatch.Elapsed);
+            var failureRecord = new HistoryRecord
             {
                 TargetName = target.Name,
-                Timestamp = startTime,
-                FileName = string.Empty,
+                OperationType = HistoryOperationType.Backup,
+                Status = HistoryOperationStatus.Failed,
+                StartedAt = new DateTimeOffset(startTime),
+                UpdatedAt = completedAt,
+                CompletedAt = completedAt,
                 FileSizeBytes = 0,
                 DurationMs = (long)stopwatch.Elapsed.TotalMilliseconds,
-                Success = false,
                 ErrorMessage = ex.Message
             };
             await _historyService.AddRecordAsync(failureRecord, cancellationToken);
@@ -444,7 +451,7 @@ public class BackupOrchestrator
                 foreach (var filePath in candidate.PathsToDelete)
                     DeleteIfExists(filePath);
 
-                await _historyService.RemoveRecordAsync(target.Name, candidate.Record.FileName, cancellationToken);
+                await _historyService.RemoveRecordAsync(candidate.Record.Id, cancellationToken);
             }
             deletedCount++;
         }
@@ -460,11 +467,12 @@ public class BackupOrchestrator
         var records = await _historyService.GetRecordsByTargetAsync(target.Name, cancellationToken);
 
         var successRecords = records
-            .Where(r => r.Success && r.RecordType is null)
-            .OrderByDescending(r => r.Timestamp)
+            .Where(r => r.OperationType == HistoryOperationType.Backup
+                && r.Status == HistoryOperationStatus.Succeeded)
+            .OrderByDescending(r => r.StartedAt)
             .ToList();
 
-        var cutoffDate = DateTime.UtcNow.AddDays(-retention.MaxAgeDays);
+        var cutoffDate = DateTimeOffset.UtcNow.AddDays(-retention.MaxAgeDays);
 
         return successRecords
             .Select((record, index) => new
@@ -472,7 +480,7 @@ public class BackupOrchestrator
                 Record = record,
                 Index = index,
                 CountExceeded = index >= retention.MaxCount,
-                AgeExceeded = record.Timestamp < cutoffDate
+                AgeExceeded = record.StartedAt < cutoffDate
             })
             .Where(item => item.Index >= retention.KeepAtLeast)
             .Where(item => retention.Mode == RetentionMode.Both
@@ -481,7 +489,7 @@ public class BackupOrchestrator
             .Select(item =>
             {
                 var record = item.Record;
-                var backupPath = Path.Combine(_config.BackupDirectory, target.Name, record.FileName);
+                var backupPath = Path.Combine(_config.BackupDirectory, target.Name, record.FileName!);
                 string[] paths =
                 [
                     backupPath,
@@ -518,7 +526,7 @@ public class BackupOrchestrator
     }
 }
 
-public sealed record BackupCleanupCandidate(BackupRecord Record, IReadOnlyList<string> PathsToDelete);
+public sealed record BackupCleanupCandidate(HistoryRecord Record, IReadOnlyList<string> PathsToDelete);
 
 internal sealed class RecoveryArtifactTarget : IBackupTarget
 {

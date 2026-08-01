@@ -2,7 +2,7 @@
 
 ## How It Works
 
-Lutra runs on the VPS alongside your containers. It does not connect to databases over the network. It executes native dump commands inside containers with `docker exec`, streams output to disk, optionally compresses it, and records results in local JSON history. systemd timers handle scheduling.
+Lutra runs on the VPS alongside your containers. It does not connect to databases over the network. It executes native dump commands inside containers with `docker exec`, streams output to disk, optionally compresses it, and records results in the local `lutra.db` application database. systemd timers handle scheduling.
 
 Supported database providers are:
 
@@ -17,7 +17,7 @@ Supported database providers are:
 
 ```text
 /var/backups/lutra/
-├── backup-history.json
+├── backup-history.json     # preserved legacy import input, when present
 ├── inventory/
 │   ├── inventory_2026-02-08_040000_a1b2c3d4e5f6.md
 │   └── inventory_2026-02-08_040000_a1b2c3d4e5f6.md.sha256
@@ -33,6 +33,13 @@ Successful backups write two integrity sidecars:
 
 - `.sha256` stores the backup file's SHA-256 checksum.
 - `.json` stores target metadata, size, checksum, duration, format, compression, and Lutra version.
+
+Application state is stored separately at `<state_directory>/lutra.db` (normally
+`/var/lib/lutra/lutra.db` for a system install). Existing custom configurations
+without `state_directory` use `<backup_directory>/.lutra-state/lutra.db` for
+compatibility. A legacy `backup-history.json` is imported transactionally once
+and then preserved byte-for-byte as non-authoritative audit/rollback input. New
+versions never write it, and any remote copy is stale after migration.
 
 Use `lutra backup verify-file --file <PATH>` to verify an artifact. Use `lutra backup reconcile` to compare target directories with successful history entries. It reports untracked files, missing files, and missing sidecars; exit code `1` means inconsistencies were found.
 
@@ -89,19 +96,20 @@ Set `verify_schedule` on a database target and run `sudo lutra schedule install`
 
 `lutra bundle` creates a checksum-protected archive containing the latest successful artifact and sidecars for every configured target, the latest inventory snapshot, a copy of `lutra.yaml`, environment variable names without values, and generated `RESTORE.md`. Bundle creation fails rather than silently omitting a target whose backup is missing.
 
-Use `--encrypt` to protect the complete archive with the global age recipient. Bundles are written under `<backup_directory>/bundles/` and included in a full `lutra sync`. The generated instructions identify system state Lutra does not cover.
+Use `--encrypt` to protect the complete archive with the global age recipient. Bundles are written under `<backup_directory>/bundles/` and included in a full `lutra sync`. The local application database, its WAL/SHM files, and the preserved legacy history are never included. The generated instructions identify system state Lutra does not cover.
 
 ## Offsite Copies
 
 Lutra can push backups with its optional rsync configuration. A pull from a Raspberry Pi or local machine provides stronger isolation and is also supported:
 
 ```bash
-rsync -avz vps:/var/backups/lutra/ ~/backups/lutra/
+rsync -avz --exclude='/.lutra-state/' --exclude='/backup-history.json' \
+  vps:/var/backups/lutra/ ~/backups/lutra/
 
 # Example local cron entry
-0 6 * * * rsync -avz vps:/var/backups/lutra/ ~/backups/lutra/
+0 6 * * * rsync -avz --exclude='/.lutra-state/' --exclude='/backup-history.json' vps:/var/backups/lutra/ ~/backups/lutra/
 
 scp -r vps:/var/backups/lutra/my-postgres/ ~/backups/lutra/my-postgres/
 ```
 
-For a Raspberry Pi, use a dedicated restricted user and grant its SSH key write access only to the destination directory. A pull-based timer is safer because a compromised VPS cannot use the Pi's credentials to delete the repository. Restic, Borg, and Kopia can point at Lutra's `backup_directory` instead of using built-in sync.
+For a Raspberry Pi, use a dedicated restricted user and grant its SSH key write access only to the destination directory. A pull-based timer is safer because a compromised VPS cannot use the Pi's credentials to delete the repository. Built-in sync excludes local application state, legacy history/lock files, and temporary files. Apply equivalent exclusions to manual pull tools; do not copy or snapshot the live `lutra.db`, `lutra.db-wal`, or `lutra.db-shm` family.

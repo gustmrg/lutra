@@ -48,12 +48,14 @@ public sealed class CleanupCommand : AsyncCommand<CleanupSettings>
 
             if (settings.PruneHistory)
             {
-                var cutoff = DateTime.UtcNow.AddDays(-config.Retention.MaxAgeDays);
+                var cutoff = DateTimeOffset.UtcNow.AddDays(-config.Retention.MaxAgeDays);
                 var history = ServiceFactory.CreateHistoryService(config);
                 if (settings.DryRun)
                 {
                     var records = await history.GetAllRecordsAsync();
-                    var count = records.Count(record => record.Timestamp < cutoff && (!record.Success || record.RecordType is not null));
+                    var count = records.Count(record => record.StartedAt < cutoff
+                        && (record.OperationType != Lutra.Core.History.HistoryOperationType.Backup
+                            || record.Status != Lutra.Core.History.HistoryOperationStatus.Succeeded));
                     AnsiConsole.MarkupLine($"  History: would prune [blue]{count}[/] operational record(s)");
                 }
                 else

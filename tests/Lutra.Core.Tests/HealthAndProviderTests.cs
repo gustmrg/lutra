@@ -11,15 +11,21 @@ public sealed class HealthAndProviderTests
     public void Analyze_FlagsFailureStreakAndMissingSuccess()
     {
         var target = PostgreSqlTarget();
-        var records = Enumerable.Range(0, 3).Select(index => new BackupRecord
+        var records = Enumerable.Range(0, 3).Select(index =>
         {
-            TargetName = target.Name,
-            Timestamp = DateTime.UtcNow.AddHours(-index),
-            FileName = "",
-            FileSizeBytes = 0,
-            DurationMs = 1,
-            Success = false,
-            ErrorMessage = "failed"
+            var startedAt = DateTimeOffset.UtcNow.AddHours(-index);
+            return new HistoryRecord
+            {
+                TargetName = target.Name,
+                OperationType = HistoryOperationType.Backup,
+                Status = HistoryOperationStatus.Failed,
+                StartedAt = startedAt,
+                UpdatedAt = startedAt.AddMilliseconds(1),
+                CompletedAt = startedAt.AddMilliseconds(1),
+                FileSizeBytes = 0,
+                DurationMs = 1,
+                ErrorMessage = "failed"
+            };
         }).ToList();
 
         var report = new AnomalyDetector(new HealthConfig()).Analyze(records, target);

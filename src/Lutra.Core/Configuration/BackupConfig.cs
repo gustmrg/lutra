@@ -3,6 +3,7 @@ using Lutra.Core.Health;
 using Lutra.Core.Inventory;
 using Lutra.Core.Notifications;
 using Lutra.Core.Sync;
+using YamlDotNet.Serialization;
 
 namespace Lutra.Core.Configuration;
 
@@ -17,14 +18,26 @@ namespace Lutra.Core.Configuration;
 public class BackupConfig
 {
     /// <summary>
-    /// Gets the base directory where all backup files and history are stored.
+    /// Gets the base directory where backup artifacts are stored.
     /// </summary>
     /// <remarks>
     /// Each database target gets its own subdirectory under this path.
-    /// The backup history JSON file (<c>backup-history.json</c>) is stored
-    /// at the root of this directory.
+    /// A legacy <c>backup-history.json</c> at the root is import-only and is
+    /// not the authoritative application history store.
     /// </remarks>
     public required string BackupDirectory { get; init; }
+
+    /// <summary>Gets the resolved directory for Lutra's local application state.</summary>
+    /// <remarks>
+    /// The configuration loader always resolves this value to an absolute path.
+    /// It is separate from <see cref="BackupDirectory"/> so mutable application
+    /// state is never treated as backup content.
+    /// </remarks>
+    public string? StateDirectory { get; set; }
+
+    /// <summary>Gets the normalized path of the configuration that produced this model.</summary>
+    [YamlIgnore]
+    public string? ConfigPath { get; set; }
 
     /// <summary>
     /// Gets the global retention policy applied to all database targets

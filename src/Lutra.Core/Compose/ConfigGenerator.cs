@@ -4,7 +4,10 @@ namespace Lutra.Core.Compose;
 
 public static class ConfigGenerator
 {
-    public static string Generate(List<DetectedDatabase> databases, string backupDirectory)
+    public static string Generate(
+        List<DetectedDatabase> databases,
+        string backupDirectory,
+        string? stateDirectory = null)
     {
         var sb = new StringBuilder();
 
@@ -12,6 +15,7 @@ public static class ConfigGenerator
         sb.AppendLine("# Review and adjust before use.");
         sb.AppendLine();
         sb.AppendLine($"backup_directory: {backupDirectory}");
+        sb.AppendLine($"state_directory: {stateDirectory ?? Configuration.ConfigTemplates.GetDefaultStateDirectory()}");
         sb.AppendLine();
         sb.AppendLine("retention:");
         sb.AppendLine("  max_count: 10");

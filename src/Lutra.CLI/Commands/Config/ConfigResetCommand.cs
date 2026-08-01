@@ -38,12 +38,13 @@ public sealed class ConfigResetCommand : AsyncCommand<GlobalSettings>
             }
 
             var backupDirectory = ConfigTemplates.GetDefaultBackupDirectory();
+            var stateDirectory = ConfigTemplates.GetDefaultStateDirectory();
 
             if (configExists)
             {
                 ConfigFileHelper.WriteFile(
                     configPath,
-                    ConfigTemplates.GenerateYamlTemplate(backupDirectory),
+                    ConfigTemplates.GenerateYamlTemplate(backupDirectory, stateDirectory),
                     overwrite: true);
             }
 

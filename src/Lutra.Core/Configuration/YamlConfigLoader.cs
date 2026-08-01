@@ -21,13 +21,14 @@ public class YamlConfigLoader : IConfigLoader
     /// <inheritdoc />
     public BackupConfig Load(string configPath)
     {
-        if (!File.Exists(configPath))
+        var normalizedConfigPath = Path.GetFullPath(configPath);
+        if (!File.Exists(normalizedConfigPath))
             throw new ConfigurationException($"Configuration file not found: {configPath}");
 
         string yaml;
         try
         {
-            yaml = File.ReadAllText(configPath);
+            yaml = File.ReadAllText(normalizedConfigPath);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -45,8 +46,38 @@ public class YamlConfigLoader : IConfigLoader
             throw new ConfigurationException($"Invalid YAML in configuration file: {ex.Message}", ex);
         }
 
+        config.ConfigPath = normalizedConfigPath;
+        config.StateDirectory = ResolveStateDirectory(
+            config.StateDirectory,
+            config.BackupDirectory,
+            normalizedConfigPath);
         Validate(config);
         return config;
+    }
+
+    /// <summary>Resolves the application-state directory for new and legacy configurations.</summary>
+    public static string ResolveStateDirectory(
+        string? configuredStateDirectory,
+        string backupDirectory,
+        string configPath)
+    {
+        var normalizedConfigPath = Path.GetFullPath(configPath);
+        var configDirectory = Path.GetDirectoryName(normalizedConfigPath)!;
+
+        if (!string.IsNullOrWhiteSpace(configuredStateDirectory))
+        {
+            return Path.GetFullPath(configuredStateDirectory, configDirectory);
+        }
+
+        var systemConfigDirectory = Path.GetFullPath("/etc/lutra");
+        if (configDirectory.Equals(systemConfigDirectory, StringComparison.Ordinal)
+            || configDirectory.StartsWith(systemConfigDirectory + Path.DirectorySeparatorChar, StringComparison.Ordinal))
+        {
+            return "/var/lib/lutra";
+        }
+
+        var resolvedBackupDirectory = Path.GetFullPath(backupDirectory, configDirectory);
+        return Path.Combine(resolvedBackupDirectory, ".lutra-state");
     }
 
     /// <summary>
@@ -79,6 +110,8 @@ public class YamlConfigLoader : IConfigLoader
     {
         if (string.IsNullOrWhiteSpace(config.BackupDirectory))
             throw new ConfigurationException("'backup_directory' is required.");
+        if (string.IsNullOrWhiteSpace(config.StateDirectory) || !Path.IsPathFullyQualified(config.StateDirectory))
+            throw new ConfigurationException("'state_directory' must resolve to an absolute path.");
 
         ValidateRetention("retention", config.Retention);
         ValidateEncryption("encryption", config.Encryption);

@@ -7,6 +7,7 @@ using Lutra.Core.Health;
 using Lutra.Core.History;
 using Lutra.Core.Inventory;
 using Lutra.Core.Notifications;
+using Lutra.Core.Persistence;
 using Lutra.Core.Restore;
 using Lutra.Core.Sync;
 
@@ -26,7 +27,7 @@ internal static class ServiceFactory
 
     public static BackupOrchestrator CreateOrchestrator(BackupConfig config)
     {
-        var historyService = new BackupHistoryService(config.BackupDirectory);
+        var historyService = CreateHistoryService(config);
         var processExecutor = new DockerProcessExecutor();
         IBackupProvider[] providers =
         [
@@ -40,7 +41,7 @@ internal static class ServiceFactory
 
     public static RestoreOrchestrator CreateRestoreOrchestrator(BackupConfig config)
     {
-        var historyService = new BackupHistoryService(config.BackupDirectory);
+        var historyService = CreateHistoryService(config);
         var processExecutor = new DockerProcessExecutor();
         IRestoreProvider[] providers =
         [
@@ -52,9 +53,20 @@ internal static class ServiceFactory
         return new RestoreOrchestrator(providers, processExecutor, historyService, config);
     }
 
-    public static BackupHistoryService CreateHistoryService(BackupConfig config)
+    public static IBackupHistoryService CreateHistoryService(BackupConfig config)
     {
-        return new BackupHistoryService(config.BackupDirectory);
+        if (string.IsNullOrWhiteSpace(config.StateDirectory)
+            || string.IsNullOrWhiteSpace(config.ConfigPath))
+        {
+            throw new ConfigurationException(
+                "The configuration must be loaded from a file before application state can be opened.");
+        }
+
+        var database = new LutraDatabase(
+            config.StateDirectory,
+            config.ConfigPath,
+            config.BackupDirectory);
+        return new SqliteBackupHistoryRepository(database);
     }
 
     public static BackupReconciliationService CreateReconciliationService(BackupConfig config)

@@ -54,12 +54,12 @@ public sealed class BackupReconciliationService
             cancellationToken.ThrowIfCancellationRequested();
             var targetDirectory = Path.Combine(_config.BackupDirectory, target.Name);
             var records = allRecords
-                .Where(record => record.Success
-                    && record.RecordType is null
+                .Where(record => record.Status == HistoryOperationStatus.Succeeded
+                    && record.OperationType == HistoryOperationType.Backup
                     && record.TargetName.Equals(target.Name, StringComparison.OrdinalIgnoreCase)
                     && !string.IsNullOrWhiteSpace(record.FileName))
                 .ToList();
-            var trackedNames = records.Select(record => record.FileName).ToHashSet(StringComparer.Ordinal);
+            var trackedNames = records.Select(record => record.FileName!).ToHashSet(StringComparer.Ordinal);
 
             if (Directory.Exists(targetDirectory))
             {
@@ -79,7 +79,7 @@ public sealed class BackupReconciliationService
 
             foreach (var record in records)
             {
-                var backupPath = Path.Combine(targetDirectory, record.FileName);
+                var backupPath = Path.Combine(targetDirectory, record.FileName!);
                 if (!File.Exists(backupPath))
                 {
                     findings.Add(new BackupReconciliationFinding(

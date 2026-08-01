@@ -532,16 +532,21 @@ public class RestoreOrchestrator
     {
         try
         {
-            var record = new BackupRecord
+            var completedAt = DateTimeOffset.UtcNow;
+            var record = new HistoryRecord
             {
                 TargetName = target.Name,
-                Timestamp = DateTime.UtcNow,
+                OperationType = HistoryOperationType.Verify,
+                Status = result.Success
+                    ? HistoryOperationStatus.Succeeded
+                    : HistoryOperationStatus.Failed,
+                StartedAt = completedAt - result.Duration,
+                UpdatedAt = completedAt,
+                CompletedAt = completedAt,
                 FileName = Path.GetFileName(backupFilePath),
                 FileSizeBytes = File.Exists(backupFilePath) ? new FileInfo(backupFilePath).Length : 0,
                 DurationMs = (long)result.Duration.TotalMilliseconds,
-                Success = result.Success,
-                ErrorMessage = result.ErrorMessage,
-                RecordType = "verify"
+                ErrorMessage = result.ErrorMessage
             };
             await _historyService.AddRecordAsync(record, cancellationToken);
         }

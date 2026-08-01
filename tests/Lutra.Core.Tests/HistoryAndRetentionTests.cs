@@ -1,6 +1,7 @@
 using Lutra.Core.Backup;
 using Lutra.Core.Configuration;
 using Lutra.Core.History;
+using Lutra.Core.Persistence;
 
 namespace Lutra.Core.Tests;
 
@@ -10,15 +11,18 @@ public sealed class HistoryAndRetentionTests
     public async Task ConcurrentHistoryWrites_DoNotLoseRecords()
     {
         using var temp = new TempDirectory();
-        var history = new BackupHistoryService(temp.Path);
-        var writes = Enumerable.Range(0, 20).Select(index => history.AddRecordAsync(new BackupRecord
+        var history = CreateHistory(temp);
+        var writes = Enumerable.Range(0, 20).Select(index => history.AddRecordAsync(new HistoryRecord
         {
             TargetName = "target",
-            Timestamp = DateTime.UtcNow.AddSeconds(index),
+            OperationType = HistoryOperationType.Backup,
+            Status = HistoryOperationStatus.Succeeded,
+            StartedAt = DateTimeOffset.UtcNow.AddSeconds(index),
+            UpdatedAt = DateTimeOffset.UtcNow.AddSeconds(index + 1),
+            CompletedAt = DateTimeOffset.UtcNow.AddSeconds(index + 1),
             FileName = $"{index}.bak",
             FileSizeBytes = index,
-            DurationMs = 1,
-            Success = true
+            DurationMs = 1
         }));
 
         await Task.WhenAll(writes);
@@ -48,17 +52,21 @@ public sealed class HistoryAndRetentionTests
             Retention = new RetentionPolicy(),
             Files = [target]
         };
-        var history = new BackupHistoryService(temp.Path);
+        var history = CreateHistory(temp);
         for (var index = 0; index < 5; index++)
         {
-            await history.AddRecordAsync(new BackupRecord
+            var startedAt = DateTimeOffset.UtcNow.AddDays(-index);
+            await history.AddRecordAsync(new HistoryRecord
             {
                 TargetName = target.Name,
-                Timestamp = DateTime.UtcNow.AddDays(-index),
+                OperationType = HistoryOperationType.Backup,
+                Status = HistoryOperationStatus.Succeeded,
+                StartedAt = startedAt,
+                UpdatedAt = startedAt.AddMilliseconds(1),
+                CompletedAt = startedAt.AddMilliseconds(1),
                 FileName = $"backup-{index}.tar",
                 FileSizeBytes = 10,
-                DurationMs = 1,
-                Success = true
+                DurationMs = 1
             });
         }
         var orchestrator = new BackupOrchestrator([], new NeverProcessExecutor(), history, config);
@@ -68,6 +76,12 @@ public sealed class HistoryAndRetentionTests
         Assert.Equal(3, candidates.Count);
         Assert.DoesNotContain(candidates, item => item.Record.FileName == "backup-0.tar");
     }
+
+    private static SqliteBackupHistoryRepository CreateHistory(TempDirectory temp)
+        => new(new LutraDatabase(
+            Path.Combine(temp.Path, "state"),
+            Path.Combine(temp.Path, "lutra.yaml"),
+            temp.Path));
 
     private sealed class NeverProcessExecutor : IProcessExecutor
     {

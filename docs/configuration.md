@@ -15,6 +15,7 @@ Use `lutra config validate --preflight` to validate the YAML and check systemd, 
 | `retention.keep_at_least` | integer | `1` | Always preserve this many newest backups |
 | `notifications.webhooks` | list | `[]` | JSON webhook endpoints for operation and health events |
 | `notifications.healthchecks_url` | string | unset | Healthchecks.io-compatible ping URL |
+| `state_directory` | path | installation-specific | Local application database directory; never backup content |
 | `sync` | object | unset | Optional SSH/rsync offsite destination |
 | `encryption` | object | unset | Global age recipient inherited by targets |
 

@@ -15,7 +15,7 @@ public sealed class HistoryCommand : AsyncCommand<TargetSettings>
             var config = ServiceFactory.LoadConfig(settings);
             var historyService = ServiceFactory.CreateHistoryService(config);
 
-            IReadOnlyList<BackupRecord> records;
+            IReadOnlyList<HistoryRecord> records;
             if (settings.Target is not null)
             {
                 ServiceFactory.ResolveTarget(config, settings.Target);
@@ -43,18 +43,21 @@ public sealed class HistoryCommand : AsyncCommand<TargetSettings>
 
             foreach (var record in records)
             {
-                var status = record.Success
+                var status = record.Status == HistoryOperationStatus.Succeeded
                     ? "[green]OK[/]"
                     : $"[red]FAILED[/] {record.ErrorMessage?.EscapeMarkup()}";
 
-                var size = record.Success && record.RecordType is null ? FormatBytes(record.FileSizeBytes) : "-";
-                var duration = record.RecordType == "sync" ? "-" : $"{record.DurationMs}ms";
+                var size = record.Status == HistoryOperationStatus.Succeeded
+                    && record.OperationType == HistoryOperationType.Backup
+                    ? FormatBytes(record.FileSizeBytes ?? 0)
+                    : "-";
+                var duration = record.OperationType == HistoryOperationType.Sync ? "-" : $"{record.DurationMs}ms";
 
                 table.AddRow(
                     record.TargetName.EscapeMarkup(),
-                    record.Timestamp.ToString("yyyy-MM-dd HH:mm:ss"),
-                    record.RecordType ?? "backup",
-                    record.FileName.EscapeMarkup(),
+                    record.StartedAt.ToString("yyyy-MM-dd HH:mm:ss"),
+                    record.OperationType.ToString().ToLowerInvariant(),
+                    (record.FileName ?? string.Empty).EscapeMarkup(),
                     size,
                     duration,
                     status);

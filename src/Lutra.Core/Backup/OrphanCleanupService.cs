@@ -39,8 +39,10 @@ public sealed class OrphanCleanupService
         {
             var records = await _history.GetRecordsByTargetAsync(target.Name, cancellationToken);
             var tracked = records
-                .Where(record => record.Success && record.RecordType is null)
-                .Select(record => record.FileName)
+                .Where(record => record.Status == HistoryOperationStatus.Succeeded
+                    && record.OperationType == HistoryOperationType.Backup
+                    && !string.IsNullOrWhiteSpace(record.FileName))
+                .Select(record => record.FileName!)
                 .ToHashSet(StringComparer.Ordinal);
 
             foreach (var path in Directory.EnumerateFiles(directory))

@@ -193,11 +193,16 @@ if [ "$EUID" -eq 0 ]; then
     INSTALL_DIR="/usr/local/bin"
     CONFIG_DIR="/etc/lutra"
     BACKUP_DIR="/var/backups/lutra"
+    STATE_DIR="/var/lib/lutra"
     INSTALL_USER=$(logname 2>/dev/null || echo "${SUDO_USER:-root}")
 else
     INSTALL_DIR="$HOME/.local/bin"
     CONFIG_DIR="$HOME/.config/lutra"
     BACKUP_DIR="$HOME/backups/lutra"
+    case "${XDG_STATE_HOME:-}" in
+        /*) STATE_DIR="$XDG_STATE_HOME/lutra" ;;
+        *) STATE_DIR="$HOME/.local/state/lutra" ;;
+    esac
     INSTALL_USER="$USER"
 fi
 
@@ -223,6 +228,7 @@ echo -e "${BLUE}Installation type:${NC} $([ "$EUID" -eq 0 ] && echo "System-wide
 echo -e "${BLUE}Binary location:${NC} $INSTALL_DIR/lutra"
 echo -e "${BLUE}Config directory:${NC} $CONFIG_DIR"
 echo -e "${BLUE}Backup directory:${NC} $BACKUP_DIR"
+echo -e "${BLUE}State directory:${NC} $STATE_DIR"
 echo ""
 
 # Check for existing installation in alternate location
@@ -313,12 +319,15 @@ if [ "$EUID" -eq 0 ]; then
     mkdir -p "$INSTALL_DIR"
     mkdir -p "$CONFIG_DIR"
     mkdir -p "$BACKUP_DIR"
+    mkdir -p "$STATE_DIR"
     chown -R "$INSTALL_USER:$INSTALL_USER" "$CONFIG_DIR"
     chown -R "$INSTALL_USER:$INSTALL_USER" "$BACKUP_DIR"
+    chown -R "$INSTALL_USER:$INSTALL_USER" "$STATE_DIR"
 else
     mkdir -p "$INSTALL_DIR"
     mkdir -p "$CONFIG_DIR"
     mkdir -p "$BACKUP_DIR"
+    mkdir -p "$STATE_DIR"
 fi
 
 echo -e "${GREEN}✓ Directories created${NC}"
@@ -388,6 +397,7 @@ else
 # Documentation: https://github.com/gustmrg/lutra
 
 backup_directory: BACKUP_DIR_PLACEHOLDER
+state_directory: STATE_DIR_PLACEHOLDER
 
 retention:
   max_count: 10        # Keep at most 10 backups per target
@@ -424,11 +434,13 @@ databases:
   #   compression: gzip
 EOF
 
-    # Replace placeholder with actual backup directory
+    # Replace placeholders with actual data directories
     if [ "$(uname)" = "Darwin" ]; then
         sed -i '' "s|BACKUP_DIR_PLACEHOLDER|$BACKUP_DIR|g" "$CONFIG_DIR/lutra.yaml"
+        sed -i '' "s|STATE_DIR_PLACEHOLDER|$STATE_DIR|g" "$CONFIG_DIR/lutra.yaml"
     else
         sed -i "s|BACKUP_DIR_PLACEHOLDER|$BACKUP_DIR|g" "$CONFIG_DIR/lutra.yaml"
+        sed -i "s|STATE_DIR_PLACEHOLDER|$STATE_DIR|g" "$CONFIG_DIR/lutra.yaml"
     fi
 
     echo -e "${GREEN}✓ Created $CONFIG_DIR/lutra.yaml${NC}"

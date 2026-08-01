@@ -20,18 +20,20 @@ public sealed class BackupArtifactHealthChecker
 
     public async Task<IReadOnlyList<HealthFinding>> CheckAsync(
         IBackupTarget target,
-        IReadOnlyList<BackupRecord> records,
+        IReadOnlyList<HistoryRecord> records,
         CancellationToken cancellationToken = default)
     {
         var findings = new List<HealthFinding>();
         var successful = records
-            .Where(record => record.Success && record.RecordType is null && !string.IsNullOrWhiteSpace(record.FileName))
-            .OrderByDescending(record => record.Timestamp)
+            .Where(record => record.Status == HistoryOperationStatus.Succeeded
+                && record.OperationType == HistoryOperationType.Backup
+                && !string.IsNullOrWhiteSpace(record.FileName))
+            .OrderByDescending(record => record.StartedAt)
             .ToList();
 
         foreach (var record in successful)
         {
-            var path = Path.Combine(_config.BackupDirectory, target.Name, record.FileName);
+            var path = Path.Combine(_config.BackupDirectory, target.Name, record.FileName!);
             if (File.Exists(path))
                 continue;
 
@@ -41,15 +43,15 @@ public sealed class BackupArtifactHealthChecker
                 Severity = Severity.Critical,
                 Message = "A successful history entry references a missing backup file.",
                 Detail = record.FileName,
-                RelevantTimestamp = record.Timestamp
+                RelevantTimestamp = record.StartedAt.UtcDateTime
             });
         }
 
         var latestExisting = successful.FirstOrDefault(record =>
-            File.Exists(Path.Combine(_config.BackupDirectory, target.Name, record.FileName)));
+            File.Exists(Path.Combine(_config.BackupDirectory, target.Name, record.FileName!)));
         if (latestExisting is not null)
         {
-            var path = Path.Combine(_config.BackupDirectory, target.Name, latestExisting.FileName);
+            var path = Path.Combine(_config.BackupDirectory, target.Name, latestExisting.FileName!);
             var verification = await BackupIntegrity.VerifyFileAsync(path, cancellationToken);
             if (!verification.Success)
             {
@@ -59,7 +61,7 @@ public sealed class BackupArtifactHealthChecker
                     Severity = Severity.Critical,
                     Message = "Latest backup failed its local integrity check.",
                     Detail = verification.Message,
-                    RelevantTimestamp = latestExisting.Timestamp
+                    RelevantTimestamp = latestExisting.StartedAt.UtcDateTime
                 });
             }
         }
@@ -68,7 +70,9 @@ public sealed class BackupArtifactHealthChecker
         {
             var walName = database.Name + "-wal";
             var walRecords = await _history.GetRecordsByTargetAsync(walName, cancellationToken);
-            var latestWal = walRecords.FirstOrDefault(record => record.Success && record.RecordType is null);
+            var latestWal = walRecords.FirstOrDefault(record =>
+                record.Status == HistoryOperationStatus.Succeeded
+                && record.OperationType == HistoryOperationType.Backup);
             if (latestWal is null)
             {
                 findings.Add(new HealthFinding
@@ -80,7 +84,7 @@ public sealed class BackupArtifactHealthChecker
             }
             else
             {
-                var walPath = Path.Combine(_config.BackupDirectory, walName, latestWal.FileName);
+                var walPath = Path.Combine(_config.BackupDirectory, walName, latestWal.FileName!);
                 var integrity = await BackupIntegrity.VerifyFileAsync(walPath, cancellationToken);
                 if (!integrity.Success)
                 {
@@ -90,7 +94,7 @@ public sealed class BackupArtifactHealthChecker
                         Severity = Severity.Critical,
                         Message = "Latest archived-WAL artifact failed its integrity check.",
                         Detail = integrity.Message,
-                        RelevantTimestamp = latestWal.Timestamp
+                        RelevantTimestamp = latestWal.StartedAt.UtcDateTime
                     });
                 }
             }
@@ -106,14 +110,14 @@ public sealed class BackupArtifactHealthChecker
                 .Where(File.Exists)
                 .ToList();
             var latestSync = await ReadLatestSuccessfulSyncAsync(markers, cancellationToken);
-            if (latestSync is null || latestSync.StartedAt < successful[0].Timestamp)
+            if (latestSync is null || latestSync.StartedAt < successful[0].StartedAt.UtcDateTime)
             {
                 findings.Add(new HealthFinding
                 {
                     Type = FindingType.MissingOffsiteSync,
                     Severity = Severity.Warning,
                     Message = "The latest successful backup has no successful offsite sync marker.",
-                    RelevantTimestamp = successful[0].Timestamp
+                    RelevantTimestamp = successful[0].StartedAt.UtcDateTime
                 });
             }
         }

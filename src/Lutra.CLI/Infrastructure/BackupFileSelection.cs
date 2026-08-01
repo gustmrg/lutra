@@ -36,13 +36,15 @@ internal static class BackupFileSelection
     /// Prompts the user to select a successful backup from the target's history.
     /// Returns <see langword="null"/> when no successful backups exist.
     /// </summary>
-    public static async Task<BackupRecord?> PromptForBackupAsync(
+    public static async Task<HistoryRecord?> PromptForBackupAsync(
         IBackupHistoryService historyService,
         IBackupTarget target)
     {
         var records = await historyService.GetRecordsByTargetAsync(target.Name);
         var backups = records
-            .Where(r => r.Success && r.RecordType is null)
+            .Where(r => r.Status == HistoryOperationStatus.Succeeded
+                && r.OperationType == HistoryOperationType.Backup
+                && !string.IsNullOrWhiteSpace(r.FileName))
             .Take(15)
             .ToList();
 
@@ -50,17 +52,17 @@ internal static class BackupFileSelection
             return null;
 
         return AnsiConsole.Prompt(
-            new SelectionPrompt<BackupRecord>()
+            new SelectionPrompt<HistoryRecord>()
                 .Title($"Select a [green]backup[/] for [bold]{target.Name.EscapeMarkup()}[/]:")
                 .PageSize(10)
-                .UseConverter(r => $"{r.Timestamp:yyyy-MM-dd HH:mm:ss} UTC — {r.FileName} ({FormatBytes(r.FileSizeBytes)})")
+                .UseConverter(r => $"{r.StartedAt:yyyy-MM-dd HH:mm:ss} UTC — {r.FileName} ({FormatBytes(r.FileSizeBytes ?? 0)})")
                 .AddChoices(backups));
     }
 
     /// <summary>
     /// Finds the most recent successful backup record whose file exists on disk.
     /// </summary>
-    public static async Task<BackupRecord?> FindLatestBackupAsync(
+    public static async Task<HistoryRecord?> FindLatestBackupAsync(
         BackupConfig config,
         IBackupHistoryService historyService,
         IBackupTarget target)
@@ -68,7 +70,9 @@ internal static class BackupFileSelection
         var records = await historyService.GetRecordsByTargetAsync(target.Name);
 
         return records
-            .Where(r => r.Success && r.RecordType is null)
+            .Where(r => r.Status == HistoryOperationStatus.Succeeded
+                && r.OperationType == HistoryOperationType.Backup
+                && !string.IsNullOrWhiteSpace(r.FileName))
             .FirstOrDefault(r => File.Exists(GetBackupPath(config, target, r)));
     }
 
@@ -87,8 +91,8 @@ internal static class BackupFileSelection
     /// <summary>
     /// Returns the full path of the backup file for a history record.
     /// </summary>
-    public static string GetBackupPath(BackupConfig config, IBackupTarget target, BackupRecord record)
-        => Path.Combine(config.BackupDirectory, target.Name, record.FileName);
+    public static string GetBackupPath(BackupConfig config, IBackupTarget target, HistoryRecord record)
+        => Path.Combine(config.BackupDirectory, target.Name, record.FileName!);
 
     public static string DescribeTarget(IBackupTarget target) => target switch
     {

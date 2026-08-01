@@ -5,6 +5,7 @@
 
 # Base directory where all backup files will be stored
 backup_directory: /var/backups/lutra
+state_directory: /var/lib/lutra
 
 # Optional global age encryption inherited by every target. Store only the public
 # recipient here; keep the private identity key off the VPS.

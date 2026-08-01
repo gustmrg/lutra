@@ -29,16 +29,42 @@ public static class ConfigTemplates
                 "lutra");
     }
 
+    /// <summary>Returns the state directory used by a newly generated configuration.</summary>
+    public static string GetDefaultStateDirectory()
+    {
+        return ResolveDefaultStateDirectory(
+            Environment.IsPrivilegedProcess,
+            Environment.GetEnvironmentVariable("XDG_STATE_HOME"),
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
+    }
+
+    /// <summary>Resolves a new installation's state directory from its installation context.</summary>
+    public static string ResolveDefaultStateDirectory(
+        bool isPrivilegedProcess,
+        string? xdgStateHome,
+        string userProfile)
+    {
+        if (isPrivilegedProcess)
+            return "/var/lib/lutra";
+
+        if (!string.IsNullOrWhiteSpace(xdgStateHome) && Path.IsPathFullyQualified(xdgStateHome))
+            return Path.Combine(xdgStateHome, "lutra");
+
+        return Path.Combine(userProfile, ".local", "state", "lutra");
+    }
+
     /// <summary>
     /// Generates the template YAML configuration content.
     /// </summary>
-    public static string GenerateYamlTemplate(string backupDirectory)
+    public static string GenerateYamlTemplate(string backupDirectory, string? stateDirectory = null)
     {
+        stateDirectory ??= GetDefaultStateDirectory();
         return $"""
 # Lutra Configuration File
 # Documentation: https://github.com/gustmrg/lutra
 
 backup_directory: {backupDirectory}
+state_directory: {stateDirectory}
 
 # Optional global encryption (public recipient only; never put the identity key here).
 # encryption:

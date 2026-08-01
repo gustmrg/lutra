@@ -31,7 +31,8 @@ public sealed class ConfigGenerateCommand : Command<ConfigGenerateSettings>
                 detected = RunInteractivePrompts(detected);
 
             var backupDir = ConfigTemplates.GetDefaultBackupDirectory();
-            var yamlContent = ConfigGenerator.Generate(detected, backupDir);
+            var stateDir = ConfigTemplates.GetDefaultStateDirectory();
+            var yamlContent = ConfigGenerator.Generate(detected, backupDir, stateDir);
             var envContent = ConfigGenerator.GenerateEnvTemplate(detected);
 
             var outputPath = settings.Output ?? Path.Combine(ConfigTemplates.GetDefaultConfigDirectory(), "lutra.yaml");
