@@ -32,28 +32,68 @@ jobs:
           dotnet-version: ${{ env.DOTNET_VERSION }}
       - name: Create smoke configuration
         run: |
-          mkdir -p "$RUNNER_TEMP/lutra-source" "$RUNNER_TEMP/lutra-backups"
-          echo smoke > "$RUNNER_TEMP/lutra-source/config.txt"
+          mkdir -p "$RUNNER_TEMP/lutra-source-a" "$RUNNER_TEMP/lutra-source-b" "$RUNNER_TEMP/lutra-backups"
+          echo smoke-a > "$RUNNER_TEMP/lutra-source-a/config.txt"
+          echo smoke-b > "$RUNNER_TEMP/lutra-source-b/config.txt"
           cat > "$RUNNER_TEMP/lutra.yaml" <<EOF
           backup_directory: $RUNNER_TEMP/lutra-backups
           retention:
             max_count: 3
             max_age_days: 7
           files:
-            - name: smoke-files
-              paths: [$RUNNER_TEMP/lutra-source/config.txt]
+            - name: smoke-a
+              paths: [$RUNNER_TEMP/lutra-source-a/config.txt]
+              schedule: daily
+            - name: smoke-b
+              paths: [$RUNNER_TEMP/lutra-source-b/config.txt]
               schedule: daily
           EOF
+          cat > "$RUNNER_TEMP/lutra-backups/backup-history.json" <<'EOF'
+          [
+            {
+              "target_name": "legacy-files",
+              "timestamp": "2026-08-01T12:00:00Z",
+              "file_name": "legacy.tar.gz",
+              "file_size_bytes": 42,
+              "duration_ms": 10,
+              "success": true
+            }
+          ]
+          EOF
+          sha256sum "$RUNNER_TEMP/lutra-backups/backup-history.json" > "$RUNNER_TEMP/legacy.sha256"
       - name: Run CLI smoke tests
         run: |
-          dotnet run --project src/Lutra.CLI -- config validate --config "$RUNNER_TEMP/lutra.yaml"
-          dotnet run --project src/Lutra.CLI -- backup list --config "$RUNNER_TEMP/lutra.yaml"
-          dotnet run --project src/Lutra.CLI -- cleanup --dry-run --config "$RUNNER_TEMP/lutra.yaml"
+          dotnet build src/Lutra.CLI/Lutra.CLI.csproj --configuration Release
+          lutra_cli="src/Lutra.CLI/bin/Release/net10.0/Lutra.CLI.dll"
+          dotnet "$lutra_cli" config validate --config "$RUNNER_TEMP/lutra.yaml" | tee "$RUNNER_TEMP/validate.out"
+          grep -q "State directory compatibility fallback" "$RUNNER_TEMP/validate.out"
+          grep -q "writable (SQLite WAL)" "$RUNNER_TEMP/validate.out"
+          sha256sum --check "$RUNNER_TEMP/legacy.sha256"
+
           set +e
-          dotnet run --project src/Lutra.CLI -- health --config "$RUNNER_TEMP/lutra.yaml"
-          status=$?
+          dotnet "$lutra_cli" backup run --target smoke-a --config "$RUNNER_TEMP/lutra.yaml" > "$RUNNER_TEMP/smoke-a.out" 2>&1 &
+          pid_a=$!
+          dotnet "$lutra_cli" backup run --target smoke-b --config "$RUNNER_TEMP/lutra.yaml" > "$RUNNER_TEMP/smoke-b.out" 2>&1 &
+          pid_b=$!
+          wait "$pid_a"
+          status_a=$?
+          wait "$pid_b"
+          status_b=$?
           set -e
-          test "$status" -eq 1
+          test "$status_a" -eq 0
+          test "$status_b" -eq 0
+          ! grep -i "busy" "$RUNNER_TEMP/smoke-a.out" "$RUNNER_TEMP/smoke-b.out"
+
+          dotnet "$lutra_cli" history --config "$RUNNER_TEMP/lutra.yaml" | tee "$RUNNER_TEMP/history.out"
+          grep -q "legacy-" "$RUNNER_TEMP/history.out"
+          grep -q "smoke-a" "$RUNNER_TEMP/history.out"
+          grep -q "smoke-b" "$RUNNER_TEMP/history.out"
+          test "$(grep -c 'OK' "$RUNNER_TEMP/history.out")" -eq 3
+          sha256sum --check "$RUNNER_TEMP/legacy.sha256"
+
+          dotnet "$lutra_cli" backup list --config "$RUNNER_TEMP/lutra.yaml"
+          dotnet "$lutra_cli" cleanup --dry-run --config "$RUNNER_TEMP/lutra.yaml"
+          dotnet "$lutra_cli" health --config "$RUNNER_TEMP/lutra.yaml"
 
   release-artifacts:
     runs-on: ubuntu-latest

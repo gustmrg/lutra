@@ -14,7 +14,7 @@ The database tools (`pg_dump`, `sqlcmd`, `mongodump`, or `sqlite3`) must be inst
 
 Download and execute the setup script. It installs the latest pre-built binary by default, even if the .NET SDK happens to be installed on the server.
 
-For a VPS that should run scheduled backups, use a system-wide installation. It is available to all users, works naturally with systemd, and uses `/usr/local/bin`, `/etc/lutra`, and `/var/backups/lutra`. Use a user-only installation when you do not have root access or are evaluating Lutra. It uses `~/.local/bin`, `~/.config/lutra`, and `~/backups/lutra`. The binary and features are otherwise the same.
+For a VPS that should run scheduled backups, use a system-wide installation. It is available to all users, works naturally with systemd, and uses `/usr/local/bin`, `/etc/lutra`, `/var/backups/lutra`, and `/var/lib/lutra`. Use a user-only installation when you do not have root access or are evaluating Lutra. It uses `~/.local/bin`, `~/.config/lutra`, `~/backups/lutra`, and `$XDG_STATE_HOME/lutra` (or `~/.local/state/lutra`). The binary and features are otherwise the same.
 
 For a system-wide installation:
 
@@ -22,7 +22,7 @@ For a system-wide installation:
 curl -fsSL https://raw.githubusercontent.com/gustmrg/lutra/main/setup.sh | sudo bash -s
 ```
 
-This installs the binary at `/usr/local/bin/lutra`, creates `/etc/lutra`, and stores backups under `/var/backups/lutra`.
+This installs the binary at `/usr/local/bin/lutra`, creates `/etc/lutra`, stores backups under `/var/backups/lutra`, and creates local application state under `/var/lib/lutra`.
 
 For a user-only installation:
 
@@ -30,7 +30,7 @@ For a user-only installation:
 curl -fsSL https://raw.githubusercontent.com/gustmrg/lutra/main/setup.sh | bash -s
 ```
 
-This installs the binary at `~/.local/bin/lutra`, creates `~/.config/lutra`, and adds `~/.local/bin` to your shell's `PATH` when needed.
+This installs the binary at `~/.local/bin/lutra`, creates `~/.config/lutra` and the resolved user state directory, and adds `~/.local/bin` to your shell's `PATH` when needed.
 
 The setup script also:
 
@@ -38,6 +38,7 @@ The setup script also:
 - Downloads the matching `linux-x64` or `linux-arm64` release archive.
 - Verifies the archive's SHA-256 checksum.
 - Creates `lutra.yaml` and `.env` templates without overwriting existing files.
+- Writes an explicit `state_directory` and creates it with ownership for the account that will run Lutra. Scheduled and manual commands must use that same account; setup does not change systemd service identity.
 
 ## Configure Lutra
 
@@ -87,7 +88,7 @@ tar -xzf "lutra-${RID}.tar.gz"
 sudo install -m 0755 lutra /usr/local/bin/lutra
 ```
 
-You must create the configuration and backup directories yourself when using this method.
+You must create the configuration, backup, and local state directories yourself when using this method. Ensure the same OS account that runs Lutra can create the SQLite DB, WAL, and SHM files in the state directory.
 
 ## Building From Source
 
@@ -107,6 +108,8 @@ Run the same setup command again. Existing configuration and environment files a
 
 ```bash
 sudo lutra uninstall
+sudo lutra uninstall --keep-state
+sudo lutra uninstall --keep-backups
 ```
 
-The uninstall command removes Lutra's installed binary, configuration, backup data, and systemd timer artifacts according to its confirmation prompts. Export anything you need before using it.
+Interactive uninstall displays and prompts for the resolved state directory separately from backup data. `--keep-state` preserves local history. `--keep-backups` preserves both backup artifacts and state. With `--yes`, state is deleted only when neither preservation flag is present. Export anything you need before using destructive options.

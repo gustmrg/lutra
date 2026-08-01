@@ -35,7 +35,7 @@ For a user-only installation, omit `sudo`:
 curl -fsSL https://raw.githubusercontent.com/gustmrg/lutra/main/setup.sh | bash -s
 ```
 
-The setup script creates `/etc/lutra` and `/var/backups/lutra` for system installs, or `~/.config/lutra` and `~/backups/lutra` for user installs. See [Installation](docs/installation.md) for prerequisites, manual binary installation, updating, and uninstalling.
+The setup script creates `/etc/lutra`, `/var/backups/lutra`, and `/var/lib/lutra` for system installs. User installs use `~/.config/lutra`, `~/backups/lutra`, and `$XDG_STATE_HOME/lutra` (or `~/.local/state/lutra`). See [Installation](docs/installation.md) for prerequisites, ownership, updating, and uninstall preservation flags.
 
 ### 2. Configure targets and credentials
 

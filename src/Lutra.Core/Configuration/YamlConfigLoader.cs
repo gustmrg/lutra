@@ -46,7 +46,11 @@ public class YamlConfigLoader : IConfigLoader
             throw new ConfigurationException($"Invalid YAML in configuration file: {ex.Message}", ex);
         }
 
+        var stateDirectoryWasExplicit = !string.IsNullOrWhiteSpace(config.StateDirectory);
         config.ConfigPath = normalizedConfigPath;
+        config.StateDirectoryWasExplicit = stateDirectoryWasExplicit;
+        config.UsesStateDirectoryCompatibilityFallback =
+            !stateDirectoryWasExplicit && !IsSystemConfigPath(normalizedConfigPath);
         config.StateDirectory = ResolveStateDirectory(
             config.StateDirectory,
             config.BackupDirectory,
@@ -69,15 +73,23 @@ public class YamlConfigLoader : IConfigLoader
             return Path.GetFullPath(configuredStateDirectory, configDirectory);
         }
 
-        var systemConfigDirectory = Path.GetFullPath("/etc/lutra");
-        if (configDirectory.Equals(systemConfigDirectory, StringComparison.Ordinal)
-            || configDirectory.StartsWith(systemConfigDirectory + Path.DirectorySeparatorChar, StringComparison.Ordinal))
+        if (IsSystemConfigPath(normalizedConfigPath))
         {
             return "/var/lib/lutra";
         }
 
         var resolvedBackupDirectory = Path.GetFullPath(backupDirectory, configDirectory);
         return Path.Combine(resolvedBackupDirectory, ".lutra-state");
+    }
+
+    private static bool IsSystemConfigPath(string configPath)
+    {
+        var configDirectory = Path.GetDirectoryName(Path.GetFullPath(configPath))!;
+        var systemConfigDirectory = Path.GetFullPath("/etc/lutra");
+        return configDirectory.Equals(systemConfigDirectory, StringComparison.Ordinal)
+            || configDirectory.StartsWith(
+                systemConfigDirectory + Path.DirectorySeparatorChar,
+                StringComparison.Ordinal);
     }
 
     /// <summary>

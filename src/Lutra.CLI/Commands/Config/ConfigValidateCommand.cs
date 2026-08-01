@@ -1,6 +1,8 @@
 using System.Diagnostics;
 using Lutra.CLI.Infrastructure;
 using Lutra.Core.Configuration;
+using Lutra.Core.Persistence;
+using Microsoft.Data.Sqlite;
 using Spectre.Console;
 using Spectre.Console.Cli;
 
@@ -16,6 +18,13 @@ public sealed class ConfigValidateCommand : AsyncCommand<ConfigValidateSettings>
 
             AnsiConsole.MarkupLine("[green]Configuration is valid.[/]");
             AnsiConsole.MarkupLine($"  Backup directory: [blue]{config.BackupDirectory.EscapeMarkup()}[/]");
+            AnsiConsole.MarkupLine($"  State directory: [blue]{config.StateDirectory!.EscapeMarkup()}[/]");
+            if (config.UsesStateDirectoryCompatibilityFallback)
+            {
+                AnsiConsole.MarkupLine(
+                    "[yellow]State directory compatibility fallback:[/] this custom configuration stores state " +
+                    "under the backup directory. Set an explicit absolute [blue]state_directory[/] to keep local state separate.");
+            }
             AnsiConsole.MarkupLine($"  Retention: max_count={config.Retention.MaxCount}, max_age_days={config.Retention.MaxAgeDays}");
             AnsiConsole.MarkupLine($"  Database targets: [blue]{config.Databases.Count}[/]");
 
@@ -47,6 +56,9 @@ public sealed class ConfigValidateCommand : AsyncCommand<ConfigValidateSettings>
             if (!CheckBackupDirectory(config.BackupDirectory))
                 return 1;
 
+            if (!CheckStateDatabase(config))
+                return 1;
+
             if (!CheckFileTargets(config))
                 return 1;
 
@@ -59,6 +71,40 @@ public sealed class ConfigValidateCommand : AsyncCommand<ConfigValidateSettings>
         {
             AnsiConsole.MarkupLine($"[red]Configuration error:[/] {ex.Message.EscapeMarkup()}");
             return 1;
+        }
+        catch (LutraDatabaseOwnershipException ex)
+        {
+            AnsiConsole.MarkupLine($"[red]State ownership conflict:[/] {ex.Message.EscapeMarkup()}");
+            AnsiConsole.MarkupLine(
+                "Use a distinct explicit [blue]state_directory[/] for this configuration; Lutra will not mix unrelated application state.");
+            return 1;
+        }
+    }
+
+    private static bool CheckStateDatabase(BackupConfig config)
+    {
+        try
+        {
+            var database = new LutraDatabase(
+                config.StateDirectory!,
+                config.ConfigPath!,
+                config.BackupDirectory);
+            database.ProbeWriteAccess();
+            AnsiConsole.MarkupLine("  Application database: [green]writable (SQLite WAL)[/]");
+            return true;
+        }
+        catch (LutraDatabaseOwnershipException)
+        {
+            throw;
+        }
+        catch (Exception ex) when (ex is SqliteException or IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            AnsiConsole.MarkupLine(
+                $"[red]Application state is not writable:[/] {ex.Message.EscapeMarkup()}");
+            AnsiConsole.MarkupLine(
+                $"The current OS account must be able to create and open lutra.db, lutra.db-wal, and lutra.db-shm in " +
+                $"'{config.StateDirectory!.EscapeMarkup()}'. Fix directory ownership/permissions or choose another state_directory.");
+            return false;
         }
     }
 

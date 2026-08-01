@@ -49,6 +49,18 @@ lutra health --json                          # Machine-readable health report
 lutra inventory                              # Capture an inventory snapshot
 ```
 
+History statuses have these meanings:
+
+| Status | Meaning |
+|---|---|
+| `CREATING` | A backup artifact is being created under an active lease. |
+| `VERIFYING` | A non-destructive verification is running. |
+| `UPLOADING` | An offsite sync is running. |
+| `OK` | The operation completed successfully. |
+| `FAILED` | The operation completed with an error. |
+| `CANCELLED` | Lutra observed cancellation and recorded it. |
+| `INTERRUPTED` | A process stopped renewing its lease; completion is unknown and health treats it as failure. |
+
 ## Sync and Disaster Recovery
 
 ```bash
@@ -86,4 +98,9 @@ Schedules use systemd calendar expressions, not cron syntax. See [Configuration]
 
 ```bash
 sudo lutra uninstall
+sudo lutra uninstall --keep-state            # Keep local history/application state
+sudo lutra uninstall --keep-backups          # Keep backups and implicitly keep state
+sudo lutra uninstall --yes                   # Non-interactive; delete both data directories
 ```
+
+Interactive uninstall prompts for backup data and local state separately. `--yes` deletes state only when neither preservation flag is supplied.

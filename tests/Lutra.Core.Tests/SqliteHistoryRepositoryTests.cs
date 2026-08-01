@@ -52,10 +52,26 @@ public sealed class SqliteHistoryRepositoryTests
 
         new LutraDatabase(stateDirectory, firstPath).Initialize();
         new LutraDatabase(stateDirectory, equivalentPath).Initialize();
-        var error = Assert.Throws<InvalidOperationException>(
+        var error = Assert.Throws<LutraDatabaseOwnershipException>(
             () => new LutraDatabase(stateDirectory, otherPath).Initialize());
 
         Assert.Contains("Select a distinct state_directory", error.Message);
+        Assert.Equal(Path.GetFullPath(otherPath), error.RequestedConfigPath);
+    }
+
+    [Fact]
+    public void ProbeWriteAccess_UsesRollbackWithoutLeavingAProbeTable()
+    {
+        using var temp = new TempDirectory();
+        var database = CreateDatabase(temp);
+
+        database.ProbeWriteAccess();
+
+        using var connection = database.OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT COUNT(*) FROM sqlite_schema WHERE name LIKE '__lutra_write_probe_%';";
+        Assert.Equal(0L, Convert.ToInt64(command.ExecuteScalar()));
+        Assert.Equal("ok", database.CheckIntegrity());
     }
 
     [Fact]

@@ -41,6 +41,14 @@ compatibility. A legacy `backup-history.json` is imported transactionally once
 and then preserved byte-for-byte as non-authoritative audit/rollback input. New
 versions never write it, and any remote copy is stale after migration.
 
+`lutra.db`, `lutra.db-wal`, and `lutra.db-shm` are local operational state, not backup artifacts. They must remain on a local filesystem and be accessed by the same OS account for manual and scheduled commands. NFS and multi-host shared state directories are unsupported because WAL requires local coordination. Independent custom configurations must use distinct `state_directory` values.
+
+History rows are created before work starts. Backup, verify, and sync operations therefore appear as `Creating`, `Verifying`, or `Uploading`, then transition to `Succeeded`, `Failed`, or `Cancelled`. A process that dies leaves a lease; after expiry, the next history access marks it `Interrupted`. Interrupted means completion was not confirmed and is treated as failure by health checks, but a finalized backup artifact is retained for reconciliation.
+
+Losing the state directory loses local history and in-flight operation state. It does not invalidate or delete backup artifacts, manifests, or checksums. `lutra backup reconcile` can identify artifacts without records, but automatic history reconstruction is not currently supported.
+
+On first database access, an existing `<backup_directory>/backup-history.json` is imported transactionally and exactly once. The JSON file remains byte-identical. Downgrading to a JSON-writing Lutra version after migration is unsupported: that older binary cannot see new SQLite records and could create a divergent history.
+
 Use `lutra backup verify-file --file <PATH>` to verify an artifact. Use `lutra backup reconcile` to compare target directories with successful history entries. It reports untracked files, missing files, and missing sidecars; exit code `1` means inconsistencies were found.
 
 ## Retention

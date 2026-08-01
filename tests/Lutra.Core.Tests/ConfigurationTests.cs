@@ -54,6 +54,31 @@ public sealed class ConfigurationTests
 
         Assert.Equal(Path.Combine(temp.Path, "state"), config.StateDirectory);
         Assert.Equal(Path.GetFullPath(path), config.ConfigPath);
+        Assert.True(config.StateDirectoryWasExplicit);
+        Assert.False(config.UsesStateDirectoryCompatibilityFallback);
+    }
+
+    [Fact]
+    public void Load_MarksCustomCompatibilityFallbackForValidationWarning()
+    {
+        using var temp = new TempDirectory();
+        var path = Path.Combine(temp.Path, "lutra.yaml");
+        File.WriteAllText(path, $$"""
+            backup_directory: {{temp.Path}}/backups
+            retention:
+              max_count: 3
+              max_age_days: 7
+            files:
+              - name: config
+                paths: [{{path}}]
+                schedule: daily
+            """);
+
+        var config = new YamlConfigLoader().Load(path);
+
+        Assert.False(config.StateDirectoryWasExplicit);
+        Assert.True(config.UsesStateDirectoryCompatibilityFallback);
+        Assert.Equal(Path.Combine(temp.Path, "backups", ".lutra-state"), config.StateDirectory);
     }
 
     [Fact]

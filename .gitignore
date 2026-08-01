@@ -47,6 +47,9 @@ artifacts/
 *.dump
 *.gz
 backup-history.json
+lutra.db
+lutra.db-wal
+lutra.db-shm
 
 # OS files
 .DS_Store

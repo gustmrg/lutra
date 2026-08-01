@@ -21,6 +21,10 @@ Use `lutra config validate --preflight` to validate the YAML and check systemd, 
 
 See [`lutra.example.yaml`](../lutra.example.yaml) for a complete annotated configuration.
 
+New installations always write an explicit absolute `state_directory`. System installs use `/var/lib/lutra`; user installs use `$XDG_STATE_HOME/lutra` when `XDG_STATE_HOME` is absolute, otherwise `~/.local/state/lutra`. A legacy config under `/etc/lutra` that omits it resolves to `/var/lib/lutra`. Any other custom/legacy config resolves to `<backup_directory>/.lutra-state` for compatibility, and `config validate` warns until the path is made explicit.
+
+One state directory belongs to one normalized configuration path. Sharing it between unrelated custom configs is refused; choose a separate `state_directory` for each installation. `config validate` reports the resolved path, opens the database in WAL mode, and performs a rolled-back write probe. The executing account must be able to create and open `lutra.db`, `lutra.db-wal`, and `lutra.db-shm` there.
+
 ## Database Targets
 
 | Property | Type | Default | Description |

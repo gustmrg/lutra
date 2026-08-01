@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using Lutra.CLI.Commands.Config;
 using Lutra.Core.Configuration;
 using Spectre.Console;
 using Spectre.Console.Cli;
@@ -22,28 +23,46 @@ public sealed class UninstallCommand : AsyncCommand<UninstallSettings>
 
             // Discover artifacts
             var binaryPath = Environment.ProcessPath;
-            var configDir = ConfigTemplates.GetDefaultConfigDirectory();
+            var configPath = Path.GetFullPath(ConfigFileHelper.ResolveConfigPath(settings.ConfigPath));
+            var configDir = Path.GetDirectoryName(configPath)!;
+            var removeWholeConfigDirectory =
+                UninstallDataPolicy.ShouldRemoveWholeConfigDirectory(settings.ConfigPath);
             var backupDir = ConfigTemplates.GetDefaultBackupDirectory();
+            var stateDir = ConfigTemplates.GetDefaultStateDirectory();
+            var dataDirectoriesResolved = string.IsNullOrWhiteSpace(settings.ConfigPath);
 
-            // Try to read backup_directory from config if it exists
-            var configPath = Path.Combine(configDir, "lutra.yaml");
+            // Prefer the resolved paths from the selected installation config.
             if (File.Exists(configPath))
             {
                 try
                 {
                     var loader = new YamlConfigLoader();
                     var config = loader.Load(configPath);
-                    backupDir = config.BackupDirectory;
+                    backupDir = Path.GetFullPath(config.BackupDirectory, configDir);
+                    stateDir = config.StateDirectory!;
+                    dataDirectoriesResolved = true;
                 }
-                catch
+                catch (Exception ex)
                 {
-                    // Fall back to default
+                    dataDirectoriesResolved = false;
+                    AnsiConsole.MarkupLine(
+                        $"[yellow]Could not resolve backup/state directories from '{configPath.EscapeMarkup()}':[/] " +
+                        $"{ex.Message.EscapeMarkup()}. Data directories will be preserved for manual review.");
                 }
+            }
+            else if (!removeWholeConfigDirectory)
+            {
+                AnsiConsole.MarkupLine(
+                    $"[yellow]Selected configuration was not found:[/] {configPath.EscapeMarkup()}. " +
+                    "Data directories will be preserved for manual review.");
             }
 
             var systemdUnits = FindSystemdUnits();
-            var configDirExists = Directory.Exists(configDir);
-            var backupDirExists = Directory.Exists(backupDir);
+            var configItemExists = removeWholeConfigDirectory
+                ? Directory.Exists(configDir)
+                : File.Exists(configPath);
+            var backupDirExists = dataDirectoriesResolved && Directory.Exists(backupDir);
+            var stateDirExists = dataDirectoriesResolved && Directory.Exists(stateDir);
 
             // Display summary
             AnsiConsole.MarkupLine("[bold]Lutra will remove the following:[/]");
@@ -56,20 +75,31 @@ public sealed class UninstallCommand : AsyncCommand<UninstallSettings>
                     AnsiConsole.MarkupLine($"    {Path.GetFileName(unit).EscapeMarkup()}");
             }
 
-            if (configDirExists)
+            if (configItemExists && removeWholeConfigDirectory)
                 AnsiConsole.MarkupLine($"  Config directory: [blue]{configDir.EscapeMarkup()}[/]");
+            else if (configItemExists)
+                AnsiConsole.MarkupLine($"  Config file: [blue]{configPath.EscapeMarkup()}[/]");
 
-            if (backupDirExists && !settings.KeepBackups)
+            if (backupDirExists && UninstallDataPolicy.ShouldDeleteBackups(settings.KeepBackups))
                 AnsiConsole.MarkupLine($"  Backup directory: [blue]{backupDir.EscapeMarkup()}[/]");
             else if (backupDirExists && settings.KeepBackups)
                 AnsiConsole.MarkupLine($"  Backup directory: [yellow]kept[/] (--keep-backups)");
+
+            var preserveState = settings.KeepBackups || settings.KeepState;
+            if (stateDirExists && !preserveState)
+                AnsiConsole.MarkupLine($"  State directory: [blue]{stateDir.EscapeMarkup()}[/]");
+            else if (stateDirExists)
+            {
+                var reason = settings.KeepBackups ? "--keep-backups implies state preservation" : "--keep-state";
+                AnsiConsole.MarkupLine($"  State directory: [yellow]kept[/] ({reason.EscapeMarkup()})");
+            }
 
             if (binaryPath is not null)
                 AnsiConsole.MarkupLine($"  Binary: [blue]{binaryPath.EscapeMarkup()}[/]");
             else
                 AnsiConsole.MarkupLine("  Binary: [yellow]unknown path, skipping[/]");
 
-            if (!configDirExists && !backupDirExists && systemdUnits.Count == 0 && binaryPath is null)
+            if (!configItemExists && !backupDirExists && !stateDirExists && systemdUnits.Count == 0 && binaryPath is null)
             {
                 AnsiConsole.MarkupLine("\n[yellow]Nothing to remove.[/]");
                 return 0;
@@ -102,6 +132,23 @@ public sealed class UninstallCommand : AsyncCommand<UninstallSettings>
                 }
             }
 
+            var deleteState = false;
+            if (stateDirExists && UninstallDataPolicy.ShouldDeleteState(settings.KeepBackups, settings.KeepState))
+            {
+                deleteState = settings.Yes || AnsiConsole.Confirm(
+                    "Delete local application state and history? This cannot be undone.",
+                    defaultValue: false);
+            }
+
+            if (deleteBackups
+                && !deleteState
+                && UninstallDataPolicy.IsSameOrNestedPath(stateDir, backupDir))
+            {
+                deleteBackups = false;
+                AnsiConsole.MarkupLine(
+                    "[yellow]Backup deletion skipped:[/] the preserved state directory is inside the backup directory.");
+            }
+
             AnsiConsole.WriteLine();
             var removed = new List<string>();
             var skipped = new List<string>();
@@ -111,44 +158,45 @@ public sealed class UninstallCommand : AsyncCommand<UninstallSettings>
                 await RemoveSystemdUnits(systemdUnits, removed, skipped);
 
             // 2. Remove config directory
-            if (configDirExists)
+            if (configItemExists)
             {
                 try
                 {
-                    Directory.Delete(configDir, recursive: true);
-                    removed.Add($"Config directory: {configDir}");
-                    AnsiConsole.MarkupLine($"  [green]Removed[/] {configDir.EscapeMarkup()}");
+                    if (removeWholeConfigDirectory)
+                    {
+                        Directory.Delete(configDir, recursive: true);
+                        removed.Add($"Config directory: {configDir}");
+                        AnsiConsole.MarkupLine($"  [green]Removed[/] {configDir.EscapeMarkup()}");
+                    }
+                    else
+                    {
+                        File.Delete(configPath);
+                        removed.Add($"Config file: {configPath}");
+                        AnsiConsole.MarkupLine($"  [green]Removed[/] {configPath.EscapeMarkup()}");
+                    }
                 }
                 catch (UnauthorizedAccessException)
                 {
-                    skipped.Add($"Config directory: {configDir} (permission denied)");
-                    AnsiConsole.MarkupLine($"  [yellow]Skipped[/] {configDir.EscapeMarkup()} (permission denied)");
-                    AnsiConsole.MarkupLine($"  Run: [blue]sudo rm -rf {configDir.EscapeMarkup()}[/]");
+                    var configItem = removeWholeConfigDirectory ? configDir : configPath;
+                    skipped.Add($"Configuration: {configItem} (permission denied)");
+                    AnsiConsole.MarkupLine($"  [yellow]Skipped[/] {configItem.EscapeMarkup()} (permission denied)");
+                    AnsiConsole.MarkupLine($"  Remove manually with sufficient permissions: [blue]{configItem.EscapeMarkup()}[/]");
                 }
             }
 
-            // 3. Remove backup directory
+            // 3. Remove state separately before a potentially enclosing backup tree.
+            if (deleteState)
+                DeleteDirectory(stateDir, "State directory", removed, skipped);
+            else if (stateDirExists)
+                skipped.Add($"State directory: {stateDir} (preserved)");
+
+            // 4. Remove backup directory
             if (deleteBackups)
-            {
-                try
-                {
-                    Directory.Delete(backupDir, recursive: true);
-                    removed.Add($"Backup directory: {backupDir}");
-                    AnsiConsole.MarkupLine($"  [green]Removed[/] {backupDir.EscapeMarkup()}");
-                }
-                catch (UnauthorizedAccessException)
-                {
-                    skipped.Add($"Backup directory: {backupDir} (permission denied)");
-                    AnsiConsole.MarkupLine($"  [yellow]Skipped[/] {backupDir.EscapeMarkup()} (permission denied)");
-                    AnsiConsole.MarkupLine($"  Run: [blue]sudo rm -rf {backupDir.EscapeMarkup()}[/]");
-                }
-            }
+                DeleteDirectory(backupDir, "Backup directory", removed, skipped);
             else if (backupDirExists)
-            {
                 skipped.Add($"Backup directory: {backupDir} (preserved)");
-            }
 
-            // 4. Delete binary (last step — safe on Linux, process keeps running)
+            // 5. Delete binary (last step — safe on Linux, process keeps running)
             if (binaryPath is not null)
             {
                 try
@@ -178,6 +226,29 @@ public sealed class UninstallCommand : AsyncCommand<UninstallSettings>
         {
             AnsiConsole.MarkupLine($"[red]Error:[/] {ex.Message.EscapeMarkup()}");
             return 1;
+        }
+    }
+
+    private static void DeleteDirectory(
+        string path,
+        string label,
+        List<string> removed,
+        List<string> skipped)
+    {
+        if (!Directory.Exists(path))
+            return;
+
+        try
+        {
+            Directory.Delete(path, recursive: true);
+            removed.Add($"{label}: {path}");
+            AnsiConsole.MarkupLine($"  [green]Removed[/] {path.EscapeMarkup()}");
+        }
+        catch (UnauthorizedAccessException)
+        {
+            skipped.Add($"{label}: {path} (permission denied)");
+            AnsiConsole.MarkupLine($"  [yellow]Skipped[/] {path.EscapeMarkup()} (permission denied)");
+            AnsiConsole.MarkupLine($"  Remove manually with sufficient permissions: [blue]{path.EscapeMarkup()}[/]");
         }
     }
 

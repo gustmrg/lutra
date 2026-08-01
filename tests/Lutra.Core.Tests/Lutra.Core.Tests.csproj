@@ -20,5 +20,6 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../../src/Lutra.Core/Lutra.Core.csproj" />
+    <ProjectReference Include="../../src/Lutra.CLI/Lutra.CLI.csproj" />
   </ItemGroup>
 </Project>

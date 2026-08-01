@@ -122,6 +122,40 @@ public sealed class LutraDatabase
         return Convert.ToString(command.ExecuteScalar()) ?? string.Empty;
     }
 
+    /// <summary>Verifies that the main database and its WAL family are writable.</summary>
+    /// <remarks>The schema probe is rolled back and leaves no application object behind.</remarks>
+    public void ProbeWriteAccess(CancellationToken cancellationToken = default)
+    {
+        Initialize(cancellationToken);
+        using var connection = OpenConnection(cancellationToken);
+        var transactionStarted = false;
+        try
+        {
+            ExecuteNonQuery(connection, "BEGIN IMMEDIATE;", cancellationToken);
+            transactionStarted = true;
+            ExecuteNonQuery(
+                connection,
+                $"CREATE TABLE \"__lutra_write_probe_{Guid.NewGuid():N}\" (value INTEGER NOT NULL);",
+                cancellationToken);
+            ExecuteNonQuery(connection, "ROLLBACK;", cancellationToken);
+            transactionStarted = false;
+        }
+        finally
+        {
+            if (transactionStarted)
+            {
+                try
+                {
+                    ExecuteNonQuery(connection, "ROLLBACK;", CancellationToken.None);
+                }
+                catch (SqliteException)
+                {
+                    // Preserve a probe failure while making a best effort to release the write lock.
+                }
+            }
+        }
+    }
+
     /// <summary>Opens a short-lived configured connection for a domain repository.</summary>
     public SqliteConnection OpenConnection(CancellationToken cancellationToken = default)
     {
@@ -177,9 +211,10 @@ public sealed class LutraDatabase
         var owner = Convert.ToString(select.ExecuteScalar());
         if (!string.Equals(owner, _normalizedConfigPath, StringComparison.Ordinal))
         {
-            throw new InvalidOperationException(
-                $"State directory '{StateDirectory}' belongs to configuration '{owner}', " +
-                $"not '{_normalizedConfigPath}'. Select a distinct state_directory.");
+            throw new LutraDatabaseOwnershipException(
+                StateDirectory,
+                owner,
+                _normalizedConfigPath);
         }
     }
 

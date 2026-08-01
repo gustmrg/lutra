@@ -39,6 +39,14 @@ public class BackupConfig
     [YamlIgnore]
     public string? ConfigPath { get; set; }
 
+    /// <summary>Gets whether <c>state_directory</c> was present in the YAML.</summary>
+    [YamlIgnore]
+    public bool StateDirectoryWasExplicit { get; set; }
+
+    /// <summary>Gets whether a custom config is using the legacy backup-local state fallback.</summary>
+    [YamlIgnore]
+    public bool UsesStateDirectoryCompatibilityFallback { get; set; }
+
     /// <summary>
     /// Gets the global retention policy applied to all database targets
     /// unless overridden by a target-specific policy.

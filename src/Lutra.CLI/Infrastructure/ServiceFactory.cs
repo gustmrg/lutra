@@ -62,11 +62,20 @@ internal static class ServiceFactory
                 "The configuration must be loaded from a file before application state can be opened.");
         }
 
-        var database = new LutraDatabase(
-            config.StateDirectory,
-            config.ConfigPath,
-            config.BackupDirectory);
-        return new SqliteBackupHistoryRepository(database);
+        try
+        {
+            var database = new LutraDatabase(
+                config.StateDirectory,
+                config.ConfigPath,
+                config.BackupDirectory);
+            return new SqliteBackupHistoryRepository(database);
+        }
+        catch (LutraDatabaseOwnershipException ex)
+        {
+            throw new ConfigurationException(
+                $"{ex.Message} Use a distinct explicit state_directory for this configuration.",
+                ex);
+        }
     }
 
     public static BackupReconciliationService CreateReconciliationService(BackupConfig config)
