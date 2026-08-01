@@ -12,7 +12,8 @@ RED='\033[0;31m'
 NC='\033[0m' # No Color
 
 GITHUB_REPO="gustmrg/lutra"
-FROM_RELEASE=false
+FROM_RELEASE=true
+FROM_SOURCE=false
 NO_MODIFY_PATH=false
 
 usage() {
@@ -21,8 +22,8 @@ usage() {
     echo "Install and configure Lutra backup tool."
     echo ""
     echo "Options:"
-    echo "  --from-release     Download pre-built binary from GitHub releases"
-    echo "                     instead of building from source"
+    echo "  --from-release     Download pre-built binary from GitHub releases (default)"
+    echo "  --from-source      Build and install from the local source checkout"
     echo "  --no-modify-path   Skip automatic PATH modification"
     echo "  -h, --help         Show this help message"
     echo ""
@@ -30,13 +31,14 @@ usage() {
     echo "  User install:     bash setup.sh          (~/.local/bin/lutra)"
     echo "  System install:   sudo bash setup.sh     (/usr/local/bin/lutra)"
     echo ""
-    echo "If .NET SDK is not found, the script automatically downloads"
-    echo "a pre-built binary from GitHub releases."
+    echo "The default installation downloads a pre-built binary from GitHub releases."
+    echo "Use --from-source only when running from a source checkout."
 }
 
 for arg in "$@"; do
     case "$arg" in
-        --from-release) FROM_RELEASE=true ;;
+        --from-release) FROM_RELEASE=true; FROM_SOURCE=false ;;
+        --from-source) FROM_SOURCE=true; FROM_RELEASE=false ;;
         --no-modify-path) NO_MODIFY_PATH=true ;;
         -h|--help) usage; exit 0 ;;
         *)
@@ -321,9 +323,21 @@ echo -e "${GREEN}✓ Directories created${NC}"
 echo ""
 
 # Build or download binary
-if [ "$FROM_RELEASE" = true ] || [ "$HAS_DOTNET" = false ]; then
+if [ "$FROM_RELEASE" = true ]; then
     install_from_release
 else
+    if [ "$HAS_DOTNET" = false ]; then
+        echo -e "${RED}✗ .NET SDK is required for --from-source${NC}"
+        echo "  Install the .NET 10 SDK or omit --from-source to install the latest release."
+        exit 1
+    fi
+
+    if [ ! -f "src/Lutra.CLI/Lutra.CLI.csproj" ]; then
+        echo -e "${RED}✗ Source checkout not found${NC}"
+        echo "  Run this command from the Lutra repository, or omit --from-source to install the latest release."
+        exit 1
+    fi
+
     # Version check: skip if already installed at the same version
     SKIP_BUILD=false
     CSPROJ_VERSION=$(grep '<Version>' src/Lutra.CLI/Lutra.CLI.csproj 2>/dev/null \
