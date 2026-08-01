@@ -6,11 +6,11 @@ namespace Lutra.CLI.Commands.Restore;
 public class RestoreSettings : GlobalSettings
 {
     [CommandOption("--target <NAME>")]
-    [Description("Database target name to restore. If omitted, you will be prompted.")]
+    [Description("Target name to restore (database, file, or volume). If omitted, you will be prompted.")]
     public string? Target { get; set; }
 
     [CommandOption("--file <PATH>")]
-    [Description("Backup file to restore. Accepts a full path or a file name inside the target's backup directory. If omitted, you will be prompted.")]
+    [Description("Backup artifact to restore. Accepts a full path or a file name inside the target's backup directory. If omitted, you will be prompted.")]
     public string? File { get; set; }
 
     [CommandOption("--force")]
@@ -23,6 +23,6 @@ public class RestoreSettings : GlobalSettings
     public string? Destination { get; set; }
 
     [CommandOption("--chain <PATH>")]
-    [Description("SQL Server only: ordered restore-chain file. Repeat for full, differential, and log files.")]
+    [Description("SQL Server only: one file in an ordered restore chain. Repeat once per file, in restore order.")]
     public string[] Chain { get; set; } = [];
 }

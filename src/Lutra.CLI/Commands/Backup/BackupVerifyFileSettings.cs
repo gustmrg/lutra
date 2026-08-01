@@ -7,7 +7,7 @@ namespace Lutra.CLI.Commands.Backup;
 public sealed class BackupVerifyFileSettings : CommandSettings
 {
     [CommandOption("--file <PATH>")]
-    [Description("Path to the backup file to verify.")]
+    [Description("Path to the backup artifact; verifies its checksum and manifest sidecars.")]
     public string? FilePath { get; set; }
 
     public override ValidationResult Validate()

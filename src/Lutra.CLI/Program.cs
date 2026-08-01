@@ -24,77 +24,77 @@ app.Configure(config =>
 
     config.AddBranch<CommandSettings>("backup", backup =>
     {
-        backup.SetDescription("Run and manage database backups.");
+        backup.SetDescription("Run and manage backups for databases, files, and Docker volumes.");
 
         backup.AddCommand<BackupRunCommand>("run")
-            .WithDescription("Run backups for all or a specific database target.");
+            .WithDescription("Run backups for all configured targets or one target.");
 
         backup.AddCommand<BackupListCommand>("list")
-            .WithDescription("List configured database targets.");
+            .WithDescription("List all configured backup targets.");
 
         backup.AddCommand<BackupVerifyFileCommand>("verify-file")
-            .WithDescription("Verify a backup file against its checksum and manifest sidecars.");
+            .WithDescription("Verify one backup artifact against its checksum and manifest sidecars.");
 
         backup.AddCommand<BackupReconcileCommand>("reconcile")
-            .WithDescription("Find inconsistencies between backup files, sidecars, and history.");
+            .WithDescription("Find inconsistencies among backup artifacts, sidecars, and history.");
     });
 
     config.AddCommand<HistoryCommand>("history")
-        .WithDescription("Show backup history.");
+        .WithDescription("Show backup, verification, and sync history.");
 
     config.AddCommand<RestoreCommand>("restore")
-        .WithDescription("Restore a backup into its database (destructive).");
+        .WithDescription("Restore a backup into its configured target (destructive).");
 
     config.AddCommand<VerifyCommand>("verify")
-        .WithDescription("Verify a backup by test-restoring it into a temporary database.");
+        .WithDescription("Verify a backup without changing its configured target.");
 
     config.AddCommand<CleanupCommand>("cleanup")
-        .WithDescription("Run retention cleanup to remove old backups.");
+        .WithDescription("Apply retention cleanup and optionally remove orphan artifacts or history.");
 
     config.AddCommand<HealthCommand>("health")
-        .WithDescription("Analyze backup health and detect anomalies.");
+        .WithDescription("Analyze backup age, integrity, and operational anomalies.");
 
     config.AddCommand<InventoryCommand>("inventory")
-        .WithDescription("Capture a best-effort server inventory snapshot.");
+        .WithDescription("Capture a best-effort server inventory snapshot when enabled.");
 
     config.AddCommand<SyncCommand>("sync")
-        .WithDescription("Sync backups to an SSH host with rsync.");
+        .WithDescription("Push configured backups to an SSH/rsync destination.");
 
     config.AddCommand<BundleCommand>("bundle")
-        .WithDescription("Create a self-describing disaster recovery bundle.");
+        .WithDescription("Create a disaster recovery bundle from latest artifacts and restore instructions.");
 
     config.AddBranch<CommandSettings>("config", cfg =>
     {
         cfg.SetDescription("Configuration management.");
 
         cfg.AddCommand<ConfigInitCommand>("init")
-            .WithDescription("Initialize configuration files and directories.");
+            .WithDescription("Create configuration, environment, and backup directories.");
 
         cfg.AddCommand<ConfigValidateCommand>("validate")
-            .WithDescription("Validate the configuration file.");
+            .WithDescription("Validate configuration, target paths, and the backup directory.");
 
         cfg.AddCommand<ConfigResetCommand>("reset")
-            .WithDescription("Reset configuration files to template defaults.");
+            .WithDescription("Reset configuration and environment files to template defaults.");
 
         cfg.AddCommand<ConfigGenerateCommand>("generate")
-            .WithDescription("Generate config from a docker-compose file.");
+            .WithDescription("Generate database targets from a Docker Compose file.");
     });
 
     config.AddCommand<UninstallCommand>("uninstall")
-        .WithDescription("Remove all Lutra artifacts (config, timers, binary).");
+        .WithDescription("Remove Lutra's binary, configuration, timers, and optionally backup data.");
 
     config.AddBranch<CommandSettings>("schedule", schedule =>
     {
-        schedule.SetDescription("Manage systemd timers for scheduled backups.");
+        schedule.SetDescription("Manage Lutra systemd timers for backups, restore drills, and inventory.");
 
         schedule.AddCommand<ScheduleInstallCommand>("install")
-            .WithDescription("Install systemd timer units for scheduled backups.");
+            .WithDescription("Install systemd timer units for backups, restore drills, and inventory.");
 
         schedule.AddCommand<ScheduleRemoveCommand>("remove")
-            .WithDescription("Remove systemd timer units for scheduled backups.");
+            .WithDescription("Remove installed Lutra systemd timer units.");
 
         schedule.AddCommand<ScheduleListCommand>("list")
-            .WithDescription("List installed Lutra systemd timer units.");
+            .WithDescription("List installed Lutra systemd timer units and their status.");
     });
 });
 

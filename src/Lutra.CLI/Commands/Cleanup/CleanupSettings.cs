@@ -14,11 +14,11 @@ public sealed class CleanupSettings : TargetSettings
     public bool OrphanSidecars { get; set; }
 
     [CommandOption("--orphan-files")]
-    [Description("Remove backup files not tracked by successful history (requires confirmation or --force).")]
+    [Description("Remove backup files not tracked by successful history, including their sidecars (requires confirmation or --force).")]
     public bool OrphanFiles { get; set; }
 
     [CommandOption("--prune-history")]
-    [Description("Prune old failures and verify/sync records using max_age_days.")]
+    [Description("Prune old failed backups and verification/sync records using max_age_days.")]
     public bool PruneHistory { get; set; }
 
     [CommandOption("--force")]

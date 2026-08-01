@@ -75,7 +75,7 @@ See [Commands](docs/commands.md) for the complete CLI reference and [Operations]
 ## Requirements
 
 - Linux (Ubuntu 22.04+ or Debian 12+)
-- Docker 20.10+
+- Docker 20.10+ for database or volume targets
 - Database dump tools installed in the relevant containers
 
 Lutra does not require a .NET runtime when installed from a release binary.

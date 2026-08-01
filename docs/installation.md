@@ -5,10 +5,10 @@ Lutra runs on Linux and is distributed as a self-contained binary. The normal in
 ## Prerequisites
 
 - Linux (Ubuntu 22.04+ or Debian 12+)
-- Docker 20.10+
-- Permission to run Docker commands
+- Docker 20.10+ for database or volume targets
+- Permission to run Docker commands for database or volume targets
 
-The database tools (`pg_dump`, `sqlcmd`, `mongodump`, or `sqlite3`) must be installed in the containers that contain the databases. Lutra does not require a .NET runtime or SDK for binary installations.
+The database tools (`pg_dump`, `sqlcmd`, `mongodump`, or `sqlite3`) must be installed in the containers that contain the databases. File targets run on the host and do not require Docker. Lutra does not require a .NET runtime or SDK for binary installations.
 
 ## Recommended Installation
 

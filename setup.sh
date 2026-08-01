@@ -278,16 +278,18 @@ fi
 echo -e "${BOLD}Checking prerequisites...${NC}"
 
 # Check Docker
+DOCKER_AVAILABLE=false
 if ! command -v docker &> /dev/null; then
-    echo -e "${RED}✗ Docker not found${NC}"
-    echo "  Install Docker first: https://docs.docker.com/engine/install/"
-    exit 1
+    echo -e "${YELLOW}⚠ Docker not found${NC}"
+    echo "  Database and volume targets require Docker."
+    echo "  Install Docker: https://docs.docker.com/engine/install/"
 else
+    DOCKER_AVAILABLE=true
     echo -e "${GREEN}✓ Docker found${NC}"
 fi
 
 # Check if user can run docker
-if ! docker ps &> /dev/null; then
+if [ "$DOCKER_AVAILABLE" = true ] && ! docker ps &> /dev/null; then
     echo -e "${YELLOW}⚠ Cannot run Docker commands${NC}"
     echo "  Add user to docker group: sudo usermod -aG docker $USER"
     echo "  Then log out and back in."

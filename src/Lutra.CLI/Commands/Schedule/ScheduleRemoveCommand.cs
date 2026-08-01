@@ -13,7 +13,7 @@ public sealed class ScheduleRemoveCommand : AsyncCommand<ScheduleRemoveCommand.S
     public sealed class Settings : CommandSettings
     {
         [CommandOption("--target <NAME>")]
-        [Description("Specific database target name. If omitted, removes all Lutra timer units.")]
+        [Description("Specific target name. If omitted, removes all Lutra timer units.")]
         public string? Target { get; set; }
     }
 

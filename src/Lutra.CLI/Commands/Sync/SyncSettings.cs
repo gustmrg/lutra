@@ -10,7 +10,7 @@ public sealed class SyncSettings : TargetSettings
     public bool DryRun { get; set; }
 
     [CommandOption("--delete")]
-    [Description("Explicitly delete remote files that no longer exist locally.")]
+    [Description("Delete remote files that no longer exist locally; remote deletion is opt-in.")]
     public bool Delete { get; set; }
 
     [CommandOption("--validate")]
