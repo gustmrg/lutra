@@ -9,12 +9,10 @@ namespace Lutra.CLI.Commands;
 public class GlobalSettings : CommandSettings
 {
     [CommandOption("--config <PATH>")]
-    [Description("Path to the YAML configuration file. User-only installs resolve the default to ~/.config/lutra/lutra.yaml.")]
-    [DefaultValue("/etc/lutra/lutra.yaml")]
-    public string ConfigPath { get; set; } = "/etc/lutra/lutra.yaml";
+    [Description("Path to the YAML configuration file. Defaults to the existing installation config.")]
+    public string? ConfigPath { get; set; }
 
     [CommandOption("--env-file <PATH>")]
-    [Description("Path to the .env file for credential resolution. User-only installs resolve the default to ~/.config/lutra/.env.")]
-    [DefaultValue("/etc/lutra/.env")]
-    public string EnvFilePath { get; set; } = "/etc/lutra/.env";
+    [Description("Path to the .env file for credential resolution. Defaults to the existing installation config.")]
+    public string? EnvFilePath { get; set; }
 }
