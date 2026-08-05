@@ -1,6 +1,6 @@
 # Configuration
 
-Lutra reads a YAML configuration file and a separate environment file. The system-wide defaults are `/etc/lutra/lutra.yaml` and `/etc/lutra/.env`; user installations use `~/.config/lutra/lutra.yaml` and `~/.config/lutra/.env`.
+Lutra reads a YAML configuration file and a separate environment file. The system-wide defaults are `/etc/lutra/lutra.yaml` and `/etc/lutra/.env`; user installations use `~/.config/lutra/lutra.yaml` and `~/.config/lutra/.env`. Unless `--env-file` is provided, Lutra uses the `.env` file beside the selected YAML configuration.
 
 Use `lutra config validate --preflight` to validate the YAML and check systemd, Docker, containers, and dump-tool availability.
 

@@ -10,8 +10,9 @@ public sealed class ConfigResetCommand : AsyncCommand<GlobalSettings>
     {
         try
         {
-            var configPath = ConfigFileHelper.ResolveConfigPath(settings.ConfigPath);
-            var envFilePath = ConfigFileHelper.ResolveEnvPath(settings.EnvFilePath);
+            var (configPath, envFilePath) = ConfigFileHelper.ResolvePaths(
+                settings.ConfigPath,
+                settings.EnvFilePath);
 
             var configExists = File.Exists(configPath);
             var envExists = File.Exists(envFilePath);

@@ -22,8 +22,9 @@ internal static class ServiceFactory
 
     public static BackupConfig LoadConfig(GlobalSettings settings)
     {
-        var envPath = ConfigFileHelper.ResolveEnvPath(settings.EnvFilePath);
-        var configPath = ConfigFileHelper.ResolveConfigPath(settings.ConfigPath);
+        var (configPath, envPath) = ConfigFileHelper.ResolvePaths(
+            settings.ConfigPath,
+            settings.EnvFilePath);
 
         YamlConfigLoader.LoadEnvFile(envPath);
         var loader = new YamlConfigLoader();

@@ -14,8 +14,9 @@ public sealed class BundleCommand : AsyncCommand<BundleSettings>
         try
         {
             var config = ServiceFactory.LoadConfig(settings);
-            var configPath = ConfigFileHelper.ResolveConfigPath(settings.ConfigPath);
-            var envPath = ConfigFileHelper.ResolveEnvPath(settings.EnvFilePath);
+            var (configPath, envPath) = ConfigFileHelper.ResolvePaths(
+                settings.ConfigPath,
+                settings.EnvFilePath);
             var result = await AnsiConsole.Status().StartAsync("Building disaster recovery bundle...", _ =>
                 ServiceFactory.CreateBundleService(config).CreateAsync(
                     configPath, envPath, settings.Output, settings.Encrypt));

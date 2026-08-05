@@ -10,8 +10,9 @@ public sealed class ConfigInitCommand : AsyncCommand<ConfigInitSettings>
     {
         try
         {
-            var configPath = ConfigFileHelper.ResolveConfigPath(settings.ConfigPath);
-            var envFilePath = ConfigFileHelper.ResolveEnvPath(settings.EnvFilePath);
+            var (configPath, envFilePath) = ConfigFileHelper.ResolvePaths(
+                settings.ConfigPath,
+                settings.EnvFilePath);
             var backupDirectory = ConfigTemplates.GetDefaultBackupDirectory();
             var stateDirectory = ConfigTemplates.GetDefaultStateDirectory();
 

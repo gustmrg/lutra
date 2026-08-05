@@ -10,7 +10,20 @@ namespace Lutra.CLI.Commands.Config;
 public static class ConfigFileHelper
 {
     private const string DefaultSystemConfigPath = "/etc/lutra/lutra.yaml";
-    private const string DefaultSystemEnvPath = "/etc/lutra/.env";
+
+    public static (string ConfigPath, string EnvPath) ResolvePaths(
+        string? configPath,
+        string? envFilePath)
+    {
+        var resolvedConfigPath = ResolveConfigPath(configPath);
+        var resolvedEnvPath = !string.IsNullOrWhiteSpace(envFilePath)
+            ? envFilePath
+            : Path.Combine(
+                Path.GetDirectoryName(Path.GetFullPath(resolvedConfigPath))!,
+                ".env");
+
+        return (resolvedConfigPath, resolvedEnvPath);
+    }
 
     public static string ResolveConfigPath(string? configPath)
     {
@@ -38,34 +51,6 @@ public static class ConfigFileHelper
         return File.Exists(userConfigPath) || !File.Exists(DefaultSystemConfigPath)
             ? userConfigPath
             : DefaultSystemConfigPath;
-    }
-
-    public static string ResolveEnvPath(string? envFilePath)
-    {
-        if (!string.IsNullOrWhiteSpace(envFilePath))
-            return envFilePath;
-
-        var userEnvPath = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-            ".config", "lutra", ".env");
-
-        if (Environment.IsPrivilegedProcess)
-        {
-            var sudoConfigDir = GetSudoUserConfigDirectory();
-            if (File.Exists(DefaultSystemEnvPath))
-                return DefaultSystemEnvPath;
-
-            var sudoEnvPath = sudoConfigDir is null
-                ? null
-                : Path.Combine(sudoConfigDir, ".env");
-            return sudoEnvPath is not null && File.Exists(sudoEnvPath)
-                ? sudoEnvPath
-                : DefaultSystemEnvPath;
-        }
-
-        return File.Exists(userEnvPath) || !File.Exists(DefaultSystemEnvPath)
-            ? userEnvPath
-            : DefaultSystemEnvPath;
     }
 
     /// <summary>

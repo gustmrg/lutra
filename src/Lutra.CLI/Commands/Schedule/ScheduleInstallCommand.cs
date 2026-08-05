@@ -29,8 +29,9 @@ public sealed class ScheduleInstallCommand : AsyncCommand<TargetSettings>
 
             var config = ServiceFactory.LoadConfig(settings);
             var lutraPath = Environment.ProcessPath ?? "lutra";
-            var resolvedConfigPath = ConfigFileHelper.ResolveConfigPath(settings.ConfigPath);
-            var resolvedEnvPath = ConfigFileHelper.ResolveEnvPath(settings.EnvFilePath);
+            var (resolvedConfigPath, resolvedEnvPath) = ConfigFileHelper.ResolvePaths(
+                settings.ConfigPath,
+                settings.EnvFilePath);
 
             var targets = settings.Target is not null
                 ? new List<IBackupTarget> { ServiceFactory.ResolveTarget(config, settings.Target) }
