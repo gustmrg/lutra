@@ -53,6 +53,9 @@ public sealed class ConfigValidateCommand : AsyncCommand<ConfigValidateSettings>
             if (config.Sync is { } sync)
                 AnsiConsole.MarkupLine($"  Offsite sync: [blue]{sync.User.EscapeMarkup()}@{sync.Host.EscapeMarkup()}:{sync.DestinationPath.EscapeMarkup()}[/]");
 
+            if (config.Notifications?.Discord is { } discord)
+                AnsiConsole.MarkupLine($"  Discord notifications: [blue]{discord.Webhooks.Count} webhook(s)[/]");
+
             if (!CheckBackupDirectory(config.BackupDirectory))
                 return 1;
 

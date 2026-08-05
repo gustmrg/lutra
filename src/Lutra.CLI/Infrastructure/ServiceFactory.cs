@@ -15,6 +15,11 @@ namespace Lutra.CLI.Infrastructure;
 
 internal static class ServiceFactory
 {
+    private static readonly HttpClient NotificationHttpClient = new()
+    {
+        Timeout = TimeSpan.FromSeconds(10)
+    };
+
     public static BackupConfig LoadConfig(GlobalSettings settings)
     {
         var envPath = ConfigFileHelper.ResolveEnvPath(settings.EnvFilePath);
@@ -100,7 +105,13 @@ internal static class ServiceFactory
 
     public static NotificationService? CreateNotificationService(BackupConfig config)
     {
-        return config.Notifications is null ? null : new NotificationService(config.Notifications);
+        if (config.Notifications?.Discord is not { } discord)
+            return null;
+
+        var channel = new DiscordNotificationChannel(
+            NotificationHttpClient,
+            DiscordWebhookUrlResolver.Resolve(discord));
+        return new NotificationService([channel]);
     }
 
     public static RsyncService CreateRsyncService(BackupConfig config)

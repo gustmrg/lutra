@@ -89,12 +89,11 @@ retention:
 #   delete: false
 #   extra_args: []
 
-# Lightweight notifications (optional). Generic webhooks receive JSON POSTs.
-# Healthchecks.io receives a GET ping; failures append /fail to the URL.
+# Optional best-effort Discord notifications. Store webhook URLs in .env, not YAML.
 # notifications:
-#   webhooks:
-#     - https://monitor.example/hooks/lutra
-#   healthchecks_url: https://hc-ping.com/your-check-uuid
+#   discord:
+#     webhooks:
+#       - url_env: LUTRA_DISCORD_WEBHOOK
 
 # Health check thresholds (optional — sensible defaults are built in)
 # health:
@@ -190,7 +189,7 @@ databases:
     {
         return """
 # Lutra Environment Variables
-# Store database passwords here (never commit this file!)
+# Store credentials here (never commit this file!)
 
 # Example PostgreSQL password
 POSTGRES_PASSWORD=your-secret-password-here
@@ -200,6 +199,9 @@ POSTGRES_PASSWORD=your-secret-password-here
 
 # Example SQL Server password
 # SQLSERVER_PASSWORD=your-sqlserver-password
+
+# Optional Discord incoming webhook URL (treat it as a credential)
+# LUTRA_DISCORD_WEBHOOK=https://discord.com/api/webhooks/replace-me
 """;
     }
 }

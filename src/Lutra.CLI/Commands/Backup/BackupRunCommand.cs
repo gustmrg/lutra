@@ -1,6 +1,7 @@
 using Lutra.CLI.Infrastructure;
 using Lutra.Core.Backup;
 using Lutra.Core.Configuration;
+using Lutra.Core.Notifications;
 using Spectre.Console;
 using Spectre.Console.Cli;
 
@@ -54,18 +55,16 @@ public sealed class BackupRunCommand : AsyncCommand<TargetSettings>
 
             PrintResults(results);
 
-            var notification = ServiceFactory.CreateNotificationService(config);
-            if (notification is not null)
-            {
-                var success = results.All(result => result.Success);
-                await notification.NotifyAsync(
-                    success ? "backup_success" : "backup_failure",
-                    success,
-                    success
-                        ? $"{results.Count} backup(s) completed successfully."
-                        : $"{results.Count(result => !result.Success)} of {results.Count} backup(s) failed.",
-                    settings.Target);
-            }
+            var success = results.All(result => result.Success);
+            await NotificationConsole.SendAsync(
+                config,
+                success ? "backup_success" : "backup_failure",
+                success,
+                success
+                    ? $"{results.Count} backup(s) completed successfully."
+                    : $"{results.Count(result => !result.Success)} of {results.Count} backup(s) failed.",
+                settings.Target,
+                BackupNotificationMapper.Map(results, config));
 
             // A full run also captures the optional host inventory. It is best-effort:
             // an inventory failure is visible but never changes the backup exit status.
@@ -92,14 +91,12 @@ public sealed class BackupRunCommand : AsyncCommand<TargetSettings>
                 else
                     AnsiConsole.MarkupLine($"[red]Post-backup offsite sync failed:[/] {sync.ErrorMessage?.EscapeMarkup() ?? "Unknown error"}");
 
-                if (notification is not null)
-                {
-                    await notification.NotifyAsync(
-                        sync.Success ? "sync_success" : "sync_failure",
-                        sync.Success,
-                        sync.Success ? "Post-backup offsite sync succeeded." : "Post-backup offsite sync failed.",
-                        settings.Target);
-                }
+                await NotificationConsole.SendAsync(
+                    config,
+                    sync.Success ? "sync_success" : "sync_failure",
+                    sync.Success,
+                    sync.Success ? "Post-backup offsite sync succeeded." : "Post-backup offsite sync failed.",
+                    settings.Target);
             }
 
             return results.All(r => r.Success) && syncSucceeded ? 0 : 1;

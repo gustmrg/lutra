@@ -2,6 +2,7 @@ using YamlDotNet.Core;
 using YamlDotNet.Core.Events;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
+using Lutra.Core.Notifications;
 
 namespace Lutra.Core.Configuration;
 
@@ -212,15 +213,8 @@ public class YamlConfigLoader : IConfigLoader
                 throw new ConfigurationException("sync: 'port' must be between 1 and 65535.");
         }
 
-        if (config.Notifications is { } notifications)
-        {
-            foreach (var url in notifications.Webhooks.Append(notifications.HealthchecksUrl)
-                         .Where(url => !string.IsNullOrWhiteSpace(url)))
-            {
-                if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || uri.Scheme is not ("http" or "https"))
-                    throw new ConfigurationException($"notifications: '{url}' is not a valid HTTP(S) URL.");
-            }
-        }
+        if (config.Notifications?.Discord is { } discord)
+            DiscordWebhookUrlResolver.Resolve(discord);
 
         if (config.Inventory is { } inventory)
         {

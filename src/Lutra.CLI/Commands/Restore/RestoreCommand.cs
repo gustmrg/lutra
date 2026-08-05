@@ -226,15 +226,12 @@ public sealed class RestoreCommand : AsyncCommand<RestoreSettings>
 
     private static async Task NotifyRestoreAsync(BackupConfig config, string targetName, bool success)
     {
-        var notification = ServiceFactory.CreateNotificationService(config);
-        if (notification is not null)
-        {
-            await notification.NotifyAsync(
-                success ? "restore_success" : "restore_failure",
-                success,
-                success ? "Backup restore succeeded." : "Backup restore failed.",
-                targetName);
-        }
+        await NotificationConsole.SendAsync(
+            config,
+            success ? "restore_success" : "restore_failure",
+            success,
+            success ? "Backup restore succeeded." : "Backup restore failed.",
+            targetName);
     }
 
     private static bool Confirm(bool force)

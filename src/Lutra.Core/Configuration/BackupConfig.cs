@@ -77,7 +77,7 @@ public class BackupConfig
     /// </summary>
     public InventoryConfig? Inventory { get; init; }
 
-    /// <summary>Gets optional webhook and Healthchecks.io notification settings.</summary>
+    /// <summary>Gets optional outbound notification settings.</summary>
     public NotificationConfig? Notifications { get; init; }
 
     /// <summary>Gets optional Raspberry Pi/offsite rsync settings.</summary>

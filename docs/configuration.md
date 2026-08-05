@@ -13,8 +13,7 @@ Use `lutra config validate --preflight` to validate the YAML and check systemd, 
 | `retention.max_age_days` | integer | `30` | Backup age threshold |
 | `retention.mode` | enum | `both` | Delete when `both` or `either` limit matches |
 | `retention.keep_at_least` | integer | `1` | Always preserve this many newest backups |
-| `notifications.webhooks` | list | `[]` | JSON webhook endpoints for operation and health events |
-| `notifications.healthchecks_url` | string | unset | Healthchecks.io-compatible ping URL |
+| `notifications.discord.webhooks` | list | `[]` | Discord incoming webhooks referenced through environment variables |
 | `state_directory` | path | installation-specific | Local application database directory; never backup content |
 | `sync` | object | unset | Optional SSH/rsync offsite destination |
 | `encryption` | object | unset | Global age recipient inherited by targets |
@@ -116,7 +115,37 @@ lutra restore --target app-config --file app-config.tar.gz
 
 Configure offsite sync with `sync.type: rsync`, `host`, `user`, `destination_path`, and `ssh_key_path`. Optional fields are `port`, `extra_args`, `post_backup`, and `delete`. Remote deletion is disabled unless configured or explicitly requested with `--delete`. Use `--dry-run` before the first transfer. Successful transfers write a `.last-sync.json` marker used by health checks.
 
-Notifications are best-effort and never change an operation's exit status. Generic webhooks receive event, status, summary, target, timestamp, and host fields. Healthchecks.io receives a direct success ping or a `/fail` ping for failures.
+Discord notifications are optional, synchronous, and best-effort. They never change
+an operation's exit status. Backup messages include one success or failure embed per
+target with the artifact name, size, destination, duration, error, and container
+where applicable. Sync, verification, restore, and health commands send summary
+embeds. Large backup runs are split across multiple Discord messages.
+
+Create an incoming webhook from the Discord channel's **Edit Channel > Integrations
+> Webhooks** screen. Store the complete webhook URL in Lutra's `.env` file because
+the URL contains a credential:
+
+```dotenv
+LUTRA_DISCORD_WEBHOOK=https://discord.com/api/webhooks/...
+```
+
+Reference the environment variable from `lutra.yaml`:
+
+```yaml
+notifications:
+  discord:
+    webhooks:
+      - url_env: LUTRA_DISCORD_WEBHOOK
+```
+
+Add more `url_env` entries to send every notification to multiple Discord channels.
+Each variable must resolve to an HTTPS URL hosted by Discord. Delivery uses a
+10-second HTTP timeout, does not retry, suppresses Discord mentions, and writes
+sanitized failures to stderr without exposing the webhook URL.
+
+The former `notifications.webhooks` and `notifications.healthchecks_url` settings
+are no longer supported. Core backups, local history, systemd status/logging, and
+`lutra health` do not require notifications or network access.
 
 ## Schedules
 

@@ -54,18 +54,15 @@ public sealed class HealthCommand : AsyncCommand<HealthSettings>
             }
 
             var worstStatus = reports.Max(r => r.OverallStatus);
-            var notification = ServiceFactory.CreateNotificationService(config);
-            if (notification is not null)
-            {
-                var healthy = worstStatus == OverallStatus.Healthy;
-                await notification.NotifyAsync(
-                    healthy ? "health_healthy" : "health_unhealthy",
-                    healthy,
-                    healthy
-                        ? "All configured backup targets are healthy."
-                        : $"Backup health is {worstStatus}; {reports.Sum(report => report.Findings.Count(finding => finding.Severity != Severity.Info))} actionable finding(s).",
-                    settings.Target);
-            }
+            var healthy = worstStatus == OverallStatus.Healthy;
+            await NotificationConsole.SendAsync(
+                config,
+                healthy ? "health_healthy" : "health_unhealthy",
+                healthy,
+                healthy
+                    ? "All configured backup targets are healthy."
+                    : $"Backup health is {worstStatus}; {reports.Sum(report => report.Findings.Count(finding => finding.Severity != Severity.Info))} actionable finding(s).",
+                settings.Target);
             return worstStatus switch
             {
                 OverallStatus.Critical => 2,

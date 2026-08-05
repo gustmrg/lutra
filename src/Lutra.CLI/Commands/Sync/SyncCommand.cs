@@ -58,14 +58,11 @@ public sealed class SyncCommand : AsyncCommand<SyncSettings>
 
     private static async Task NotifyAsync(BackupConfig config, bool success, string? target)
     {
-        var notifications = ServiceFactory.CreateNotificationService(config);
-        if (notifications is not null)
-        {
-            await notifications.NotifyAsync(
-                success ? "sync_success" : "sync_failure",
-                success,
-                success ? "Offsite backup sync succeeded." : "Offsite backup sync failed.",
-                target);
-        }
+        await NotificationConsole.SendAsync(
+            config,
+            success ? "sync_success" : "sync_failure",
+            success,
+            success ? "Offsite backup sync succeeded." : "Offsite backup sync failed.",
+            target);
     }
 }

@@ -33,12 +33,11 @@ retention:
 #   delete: false                    # remote deletion is opt-in
 #   extra_args: []
 
-# Optional notifications. Webhooks receive JSON POST requests; Healthchecks.io
-# receives GET pings (with /fail appended when an operation fails).
+# Optional best-effort Discord notifications. Store webhook URLs in .env, not YAML.
 # notifications:
-#   webhooks:
-#     - https://monitor.example/hooks/lutra
-#   healthchecks_url: https://hc-ping.com/your-check-uuid
+#   discord:
+#     webhooks:
+#       - url_env: LUTRA_DISCORD_WEBHOOK
 
 # Database targets to back up
 databases:
