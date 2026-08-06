@@ -9,6 +9,7 @@ honor its STOP conditions, and update this index as work progresses.
 | Plan | Title | Priority | Effort | Depends on | Status |
 |---|---|---:|---:|---|---|
 | [001](001-sqlite-history-states.md) | Introduce Lutra's SQLite application database and migrate backup history | P1 | L | — | IN PROGRESS |
+| [002](002-structured-environment-recovery.md) | Add structured, reconstructible environment backups | P1 | L | Plan 001 Phase 3 | IN PROGRESS |
 
 Status values: `TODO` | `IN PROGRESS` | `DONE` | `BLOCKED` (with reason) |
 `REJECTED` (with rationale).
@@ -17,6 +18,10 @@ Status values: `TODO` | `IN PROGRESS` | `DONE` | `BLOCKED` (with reason) |
 
 - Plan 001 is split into four review checkpoints. Its index status remains
   `IN PROGRESS` between checkpoints and becomes `DONE` only after Phase 4.
+- Plan 002 Phase 1 can build on Plan 001 Phase 3's application-state contract;
+  Phase 2 waits for Plan 001 to finish before adding scheduled runs and history
+  integration. Its first delivery is deliberately plaintext and excludes
+  secrets; encrypted secret recovery is deferred to a follow-up.
 
 ## Findings considered and rejected
 

@@ -145,6 +145,8 @@ public class YamlConfigLoader : IConfigLoader
                 throw new ConfigurationException($"{prefix} ({db.Name}): 'name' cannot contain path separators.");
             if (!targetNames.Add(db.Name))
                 throw new ConfigurationException($"{prefix} ({db.Name}): duplicate target name.");
+            if (db.Name.Equals("@environment", StringComparison.OrdinalIgnoreCase))
+                throw new ConfigurationException($"{prefix} ({db.Name}): '@environment' is reserved for recovery history.");
             if (string.IsNullOrWhiteSpace(db.Container))
                 throw new ConfigurationException($"{prefix} ({db.Name}): 'container' is required.");
             if (string.IsNullOrWhiteSpace(db.Database))
@@ -241,6 +243,8 @@ public class YamlConfigLoader : IConfigLoader
                 throw new ConfigurationException($"{prefix}: a safe 'name' is required.");
             if (!targetNames.Add(volume.Name))
                 throw new ConfigurationException($"{prefix} ({volume.Name}): duplicate target name.");
+            if (volume.Name.Equals("@environment", StringComparison.OrdinalIgnoreCase))
+                throw new ConfigurationException($"{prefix} ({volume.Name}): '@environment' is reserved for recovery history.");
             if (string.IsNullOrWhiteSpace(volume.Volume))
                 throw new ConfigurationException($"{prefix} ({volume.Name}): 'volume' is required.");
             if (string.IsNullOrWhiteSpace(volume.Schedule) || LooksLikeCronExpression(volume.Schedule))
@@ -261,6 +265,8 @@ public class YamlConfigLoader : IConfigLoader
                 throw new ConfigurationException($"{prefix} ({ft.Name}): 'name' cannot contain path separators.");
             if (!targetNames.Add(ft.Name))
                 throw new ConfigurationException($"{prefix} ({ft.Name}): duplicate target name.");
+            if (ft.Name.Equals("@environment", StringComparison.OrdinalIgnoreCase))
+                throw new ConfigurationException($"{prefix} ({ft.Name}): '@environment' is reserved for recovery history.");
             if (ft.Paths.Count == 0)
                 throw new ConfigurationException($"{prefix} ({ft.Name}): 'paths' must contain at least one entry.");
             if (ft.Paths.Any(string.IsNullOrWhiteSpace))
@@ -274,6 +280,56 @@ public class YamlConfigLoader : IConfigLoader
             if (ft.Retention is not null)
                 ValidateRetention($"{prefix} ({ft.Name}).retention", ft.Retention);
             ValidateEncryption($"{prefix} ({ft.Name}).encryption", ft.Encryption);
+        }
+
+        ValidateEnvironment(config);
+    }
+
+    private static void ValidateEnvironment(BackupConfig config)
+    {
+        if (config.Environment is not { } environment)
+            return;
+
+        if (string.IsNullOrWhiteSpace(environment.Schedule)
+            || LooksLikeCronExpression(environment.Schedule))
+        {
+            throw new ConfigurationException(
+                "environment: use a valid systemd calendar 'schedule'.");
+        }
+        if (environment.Retention is not null)
+            ValidateRetention("environment.retention", environment.Retention);
+        if (environment.Exclude.Any(string.IsNullOrWhiteSpace))
+            throw new ConfigurationException("environment: 'exclude' cannot contain empty patterns.");
+        if (environment.SystemdUnits.Any(unit => !IsSafeSystemdUnit(unit)))
+            throw new ConfigurationException(
+                "environment: 'systemd_units' must contain simple .service unit names.");
+        if (environment.DockerContainers.Any(name => !IsSafeRuntimeName(name)))
+            throw new ConfigurationException(
+                "environment: 'docker_containers' contains an invalid container name.");
+
+        if (!environment.Enabled)
+            return;
+        if (!environment.AcknowledgePlaintext)
+            throw new ConfigurationException(
+                "environment: enabled plaintext recovery requires 'acknowledge_plaintext: true'.");
+        if (environment.Targets.Count == 0)
+            throw new ConfigurationException(
+                "environment: enabled recovery requires at least one target.");
+
+        var referencedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var name in environment.Targets)
+        {
+            if (string.IsNullOrWhiteSpace(name) || !referencedNames.Add(name))
+                throw new ConfigurationException(
+                    "environment: target names must be nonempty and unique.");
+
+            var target = config.AllTargets().SingleOrDefault(
+                candidate => candidate.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+            if (target is null)
+                throw new ConfigurationException($"environment: target '{name}' is not configured.");
+            if (target is DatabaseTarget)
+                throw new ConfigurationException(
+                    $"environment: database target '{name}' is not supported; use a file or volume target.");
         }
     }
 
@@ -312,6 +368,15 @@ public class YamlConfigLoader : IConfigLoader
     {
         return !value.Contains('/') && !value.Contains('\\');
     }
+
+    private static bool IsSafeSystemdUnit(string value)
+        => value.EndsWith(".service", StringComparison.Ordinal)
+           && IsSafeRuntimeName(value);
+
+    private static bool IsSafeRuntimeName(string value)
+        => !string.IsNullOrWhiteSpace(value)
+           && value.All(character => char.IsAsciiLetterOrDigit(character)
+                                     || character is '_' or '-' or '.' or '@');
 
     private static bool LooksLikeCronExpression(string value)
     {

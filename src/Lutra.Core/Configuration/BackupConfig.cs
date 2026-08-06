@@ -1,4 +1,5 @@
 using Lutra.Core.Encryption;
+using Lutra.Core.Recovery;
 using Lutra.Core.Health;
 using Lutra.Core.Inventory;
 using Lutra.Core.Notifications;
@@ -76,6 +77,9 @@ public class BackupConfig
     /// Gets optional server inventory snapshot configuration.
     /// </summary>
     public InventoryConfig? Inventory { get; init; }
+
+    /// <summary>Gets optional structured environment recovery configuration.</summary>
+    public EnvironmentBackupConfig? Environment { get; init; }
 
     /// <summary>Gets optional outbound notification settings.</summary>
     public NotificationConfig? Notifications { get; init; }

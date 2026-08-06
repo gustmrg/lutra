@@ -32,12 +32,26 @@ public static class FileArchive
         await using var fileStream = new FileStream(
             outputPath, FileMode.Create, FileAccess.Write, FileShare.None, 81920, useAsync: true);
 
+        await CreateAsync(paths, excludePatterns, fileStream, compression, cancellationToken);
+    }
+
+    /// <summary>Creates a tar archive in a caller-owned output stream.</summary>
+    public static async Task CreateAsync(
+        IReadOnlyList<string> paths,
+        IReadOnlyList<string> excludePatterns,
+        Stream output,
+        CompressionType compression,
+        CancellationToken cancellationToken = default)
+    {
+        if (!output.CanWrite)
+            throw new ArgumentException("Output stream must be writable.", nameof(output));
+
         await using var gzipStream = compression == CompressionType.Gzip
-            ? new GZipStream(fileStream, CompressionLevel.Optimal)
+            ? new GZipStream(output, CompressionLevel.Optimal, leaveOpen: true)
             : null;
 
-        var tarStream = (Stream?)gzipStream ?? fileStream;
-        await using var writer = new TarWriter(tarStream, TarEntryFormat.Pax, leaveOpen: false);
+        var tarStream = (Stream?)gzipStream ?? output;
+        await using var writer = new TarWriter(tarStream, TarEntryFormat.Pax, leaveOpen: true);
 
         foreach (var path in paths)
         {
