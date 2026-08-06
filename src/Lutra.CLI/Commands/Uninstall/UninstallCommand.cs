@@ -260,6 +260,7 @@ public sealed class UninstallCommand : AsyncCommand<UninstallSettings>
         try
         {
             return Directory.GetFiles(SystemdDir, "lutra-backup-*")
+                .Concat(Directory.GetFiles(SystemdDir, "lutra-environment-backup.*"))
                 .OrderBy(f => f)
                 .ToList();
         }

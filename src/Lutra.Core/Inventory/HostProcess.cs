@@ -2,25 +2,29 @@ using System.Diagnostics;
 
 namespace Lutra.Core.Inventory;
 
-/// <summary>
-/// Runs short-lived processes on the host and captures their output.
-/// Used by inventory collectors; unlike <see cref="Backup.IProcessExecutor"/>,
-/// these commands run outside of Docker.
-/// </summary>
-internal static class HostProcess
+public interface IHostProcessRunner
 {
-    /// <summary>
-    /// Runs a command and captures stdout/stderr. Returns a result with exit code
-    /// <c>-1</c> when the process cannot be started (e.g. the tool is not installed).
-    /// </summary>
-    public static async Task<HostProcessResult> RunAsync(
+    Task<HostProcessResult> RunAsync(
         string fileName,
-        IReadOnlyList<string> args,
+        IReadOnlyList<string> arguments,
+        CancellationToken cancellationToken = default);
+}
+
+public sealed record HostProcessResult(int ExitCode, string StdOut, string StdErr)
+{
+    public bool IsSuccess => ExitCode == 0;
+}
+
+internal sealed class SystemHostProcessRunner : IHostProcessRunner
+{
+    public async Task<HostProcessResult> RunAsync(
+        string fileName,
+        IReadOnlyList<string> arguments,
         CancellationToken cancellationToken = default)
     {
         try
         {
-            var psi = new ProcessStartInfo
+            var startInfo = new ProcessStartInfo
             {
                 FileName = fileName,
                 RedirectStandardOutput = true,
@@ -28,32 +32,20 @@ internal static class HostProcess
                 UseShellExecute = false,
                 CreateNoWindow = true
             };
+            foreach (var argument in arguments)
+                startInfo.ArgumentList.Add(argument);
 
-            foreach (var arg in args)
-                psi.ArgumentList.Add(arg);
-
-            using var process = Process.Start(psi);
+            using var process = Process.Start(startInfo);
             if (process is null)
-                return new HostProcessResult(-1, string.Empty, "failed to start process");
-
-            var stdoutTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
-            var stderrTask = process.StandardError.ReadToEndAsync(cancellationToken);
-
+                return new HostProcessResult(-1, "", "");
+            var stdout = process.StandardOutput.ReadToEndAsync(cancellationToken);
+            var stderr = process.StandardError.ReadToEndAsync(cancellationToken);
             await process.WaitForExitAsync(cancellationToken);
-
-            return new HostProcessResult(
-                process.ExitCode,
-                await stdoutTask,
-                await stderrTask);
+            return new HostProcessResult(process.ExitCode, await stdout, await stderr);
         }
         catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or FileNotFoundException)
         {
-            return new HostProcessResult(-1, string.Empty, ex.Message);
+            return new HostProcessResult(-1, "", "");
         }
     }
-}
-
-internal sealed record HostProcessResult(int ExitCode, string StdOut, string StdErr)
-{
-    public bool IsSuccess => ExitCode == 0;
 }

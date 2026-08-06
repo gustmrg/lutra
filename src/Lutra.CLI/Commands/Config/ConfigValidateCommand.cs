@@ -50,6 +50,15 @@ public sealed class ConfigValidateCommand : AsyncCommand<ConfigValidateSettings>
                 AnsiConsole.MarkupLine($"  Inventory: {(inventory.Enabled ? "[green]enabled[/]" : "[grey]disabled[/]")} ({collectors.EscapeMarkup()})");
             }
 
+            if (config.Environment is { } environment)
+            {
+                AnsiConsole.MarkupLine(
+                    $"  Environment recovery: {(environment.Enabled ? "[green]enabled[/]" : "[grey]disabled[/]")} " +
+                    $"({environment.Targets.Count} target(s), plaintext)");
+                if (environment.Enabled)
+                    AnsiConsole.MarkupLine("  [yellow]Warning:[/] recovery sets exclude common secrets but are not encrypted.");
+            }
+
             if (config.Sync is { } sync)
                 AnsiConsole.MarkupLine($"  Offsite sync: [blue]{sync.User.EscapeMarkup()}@{sync.Host.EscapeMarkup()}:{sync.DestinationPath.EscapeMarkup()}[/]");
 
@@ -204,6 +213,16 @@ public sealed class ConfigValidateCommand : AsyncCommand<ConfigValidateSettings>
             && !await ValidateScheduleExpressionAsync("inventory", inventory.Schedule))
             failed = true;
 
+        if (config.Environment is { Enabled: true } environment)
+        {
+            AnsiConsole.MarkupLine(
+                "  [yellow]Environment recovery:[/] plaintext output; common secret paths in file targets are always excluded.");
+            if (!await ValidateScheduleExpressionAsync("environment recovery", environment.Schedule))
+                failed = true;
+            if (!CheckEnvironmentOutputDirectory(config))
+                failed = true;
+        }
+
         if (config.AllTargets().Any(target => target.Encryption is not null) || config.Encryption is not null)
         {
             if (!await CommandSucceedsAsync("age", ["--version"]))
@@ -228,6 +247,37 @@ public sealed class ConfigValidateCommand : AsyncCommand<ConfigValidateSettings>
         }
 
         return failed ? 1 : 0;
+    }
+
+    private static bool CheckEnvironmentOutputDirectory(BackupConfig config)
+    {
+        var directory = Path.Combine(config.BackupDirectory, "environment");
+        try
+        {
+            if (OperatingSystem.IsLinux())
+            {
+                const UnixFileMode mode = UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute;
+                Directory.CreateDirectory(directory, mode);
+                File.SetUnixFileMode(directory, mode);
+                if (File.GetUnixFileMode(directory) != mode)
+                    throw new UnauthorizedAccessException();
+            }
+            else
+            {
+                Directory.CreateDirectory(directory);
+            }
+
+            var probe = Path.Combine(directory, $".lutra-write-test-{Guid.NewGuid():N}");
+            File.WriteAllText(probe, "");
+            File.Delete(probe);
+            AnsiConsole.MarkupLine("  Environment output: [green]writable and private[/]");
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            AnsiConsole.MarkupLine("[red]Environment output:[/] cannot create a private writable directory.");
+            return false;
+        }
     }
 
     private static bool CheckFileTargets(BackupConfig config)

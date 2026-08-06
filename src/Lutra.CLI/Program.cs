@@ -2,6 +2,7 @@ using Lutra.CLI.Commands.Backup;
 using Lutra.CLI.Commands.Bundle;
 using Lutra.CLI.Commands.Cleanup;
 using Lutra.CLI.Commands.Config;
+using Lutra.CLI.Commands.Recovery;
 using Lutra.CLI.Commands.Health;
 using Lutra.CLI.Commands.History;
 using Lutra.CLI.Commands.Inventory;
@@ -62,6 +63,13 @@ app.Configure(config =>
 
     config.AddCommand<BundleCommand>("bundle")
         .WithDescription("Create a disaster recovery bundle from latest artifacts and restore instructions.");
+
+    config.AddBranch<CommandSettings>("environment", environment =>
+    {
+        environment.SetDescription("Create and restore structured VPS environment recovery sets.");
+        environment.AddCommand<EnvironmentBackupCommand>("backup")
+            .WithDescription("Create a plaintext environment recovery set with secrets excluded.");
+    });
 
     config.AddBranch<CommandSettings>("config", cfg =>
     {

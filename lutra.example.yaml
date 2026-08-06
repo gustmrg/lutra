@@ -124,8 +124,28 @@ databases:
 #       max_count: 14
 #       max_age_days: 60
 
+# Optional coherent VPS environment recovery set. It is plaintext and excluded
+# from built-in sync. Lutra always excludes common secret paths in file targets
+# (.env, private keys, credentials, and secrets); those exclusions cannot be
+# overridden. Volume contents cannot be classified, so never select a credential
+# store volume. Keep the set restricted and restore secrets externally.
+# environment:
+#   enabled: true
+#   acknowledge_plaintext: true
+#   schedule: "Sun *-*-* 01:00:00"
+#   targets: [app-config, app-uploads]
+#   exclude: ["*.token"]
+#   systemd_units: [nginx.service, myapp.service]
+#   docker_containers: [myapp]
+#   retention:
+#     max_count: 4
+#     max_age_days: 90
+#     mode: both
+#     keep_at_least: 1
+
 # Optional server inventory snapshots. These are restoration aids, not backups of
-# system state. Collector failures are noted in the snapshot and never fail backups.
+# system state. Collector failures never fail ordinary backups. Required collector
+# failures abort environment recovery so an incomplete set is not published.
 # inventory:
 #   enabled: true
 #   schedule: "*-*-* 04:00:00"

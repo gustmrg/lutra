@@ -298,6 +298,11 @@ public class YamlConfigLoader : IConfigLoader
         }
         if (environment.Retention is not null)
             ValidateRetention("environment.retention", environment.Retention);
+        if (environment.Targets is null
+            || environment.Exclude is null
+            || environment.SystemdUnits is null
+            || environment.DockerContainers is null)
+            throw new ConfigurationException("environment: list properties cannot be null.");
         if (environment.Exclude.Any(string.IsNullOrWhiteSpace))
             throw new ConfigurationException("environment: 'exclude' cannot contain empty patterns.");
         if (environment.SystemdUnits.Any(unit => !IsSafeSystemdUnit(unit)))
@@ -306,6 +311,10 @@ public class YamlConfigLoader : IConfigLoader
         if (environment.DockerContainers.Any(name => !IsSafeRuntimeName(name)))
             throw new ConfigurationException(
                 "environment: 'docker_containers' contains an invalid container name.");
+        if (environment.SystemdUnits.Distinct(StringComparer.Ordinal).Count() != environment.SystemdUnits.Count)
+            throw new ConfigurationException("environment: 'systemd_units' must be unique.");
+        if (environment.DockerContainers.Distinct(StringComparer.Ordinal).Count() != environment.DockerContainers.Count)
+            throw new ConfigurationException("environment: 'docker_containers' must be unique.");
 
         if (!environment.Enabled)
             return;
@@ -352,6 +361,8 @@ public class YamlConfigLoader : IConfigLoader
             throw new ConfigurationException($"{prefix}: 'max_age_days' must be greater than zero.");
         if (retention.KeepAtLeast < 0)
             throw new ConfigurationException($"{prefix}: 'keep_at_least' cannot be negative.");
+        if (retention.KeepAtLeast > retention.MaxCount)
+            throw new ConfigurationException($"{prefix}: 'keep_at_least' cannot exceed 'max_count'.");
     }
 
     private static void ValidatePostgresFormat(string prefix, DatabaseTarget db)
@@ -366,7 +377,10 @@ public class YamlConfigLoader : IConfigLoader
 
     private static bool IsSafeName(string value)
     {
-        return !value.Contains('/') && !value.Contains('\\');
+        return value is not "." and not ".."
+               && !value.Contains('/')
+               && !value.Contains('\\')
+               && !value.Any(char.IsControl);
     }
 
     private static bool IsSafeSystemdUnit(string value)

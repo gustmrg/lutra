@@ -9,6 +9,7 @@ using Lutra.Core.Inventory;
 using Lutra.Core.Notifications;
 using Lutra.Core.Persistence;
 using Lutra.Core.Restore;
+using Lutra.Core.Recovery;
 using Lutra.Core.Sync;
 
 namespace Lutra.CLI.Infrastructure;
@@ -128,6 +129,14 @@ internal static class ServiceFactory
     public static InventoryService CreateInventoryService(BackupConfig config)
     {
         return new InventoryService(config);
+    }
+
+    public static EnvironmentBackupService CreateEnvironmentBackupService(BackupConfig config)
+    {
+        return new EnvironmentBackupService(
+            config,
+            CreateHistoryService(config),
+            CreateInventoryService(config));
     }
 
     public static IBackupTarget ResolveTarget(BackupConfig config, string targetName)

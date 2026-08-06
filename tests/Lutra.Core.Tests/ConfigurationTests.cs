@@ -205,6 +205,101 @@ public sealed class ConfigurationTests
         Assert.Contains("database target 'db' is not supported", error.Message);
     }
 
+    [Fact]
+    public void Load_RejectsNullEnvironmentLists()
+    {
+        using var temp = new TempDirectory();
+        var source = Path.Combine(temp.Path, "source.txt");
+        File.WriteAllText(source, "data");
+        var path = WriteEnvironmentConfig(temp, source, """
+            environment:
+              enabled: true
+              acknowledge_plaintext: true
+              targets: null
+            """);
+
+        var error = Assert.Throws<ConfigurationException>(() => new YamlConfigLoader().Load(path));
+
+        Assert.Contains("list properties cannot be null", error.Message);
+    }
+
+    [Fact]
+    public void Load_RejectsDuplicateEnvironmentDeclarations()
+    {
+        using var temp = new TempDirectory();
+        var source = Path.Combine(temp.Path, "source.txt");
+        File.WriteAllText(source, "data");
+        var path = WriteEnvironmentConfig(temp, source, """
+            environment:
+              enabled: true
+              acknowledge_plaintext: true
+              targets: [config]
+              systemd_units: [app.service, app.service]
+            """);
+
+        var error = Assert.Throws<ConfigurationException>(() => new YamlConfigLoader().Load(path));
+
+        Assert.Contains("systemd_units", error.Message);
+        Assert.Contains("unique", error.Message);
+    }
+
+    [Fact]
+    public void Load_RejectsRetentionMinimumAboveMaximum()
+    {
+        using var temp = new TempDirectory();
+        var source = Path.Combine(temp.Path, "source.txt");
+        File.WriteAllText(source, "data");
+        var path = WriteEnvironmentConfig(temp, source, """
+            environment:
+              enabled: true
+              acknowledge_plaintext: true
+              targets: [config]
+              retention:
+                max_count: 1
+                max_age_days: 30
+                keep_at_least: 2
+            """);
+
+        var error = Assert.Throws<ConfigurationException>(() => new YamlConfigLoader().Load(path));
+
+        Assert.Contains("keep_at_least", error.Message);
+        Assert.Contains("max_count", error.Message);
+    }
+
+    [Fact]
+    public void GeneratedTemplateDocumentsPlaintextEnvironmentRecovery()
+    {
+        var template = ConfigTemplates.GenerateYamlTemplate("/backups", "/state");
+
+        Assert.Contains("acknowledge_plaintext: true", template);
+        Assert.Contains("excluded from built-in sync", template);
+        Assert.Contains("external", template);
+        Assert.Contains("credential-store volumes", template);
+    }
+
+    [Theory]
+    [InlineData(".")]
+    [InlineData("..")]
+    public void Load_RejectsDotTargetNames(string targetName)
+    {
+        using var temp = new TempDirectory();
+        var source = Path.Combine(temp.Path, "source.txt");
+        File.WriteAllText(source, "data");
+        var path = Path.Combine(temp.Path, "lutra.yaml");
+        File.WriteAllText(path, $$"""
+            backup_directory: {{temp.Path}}/backups
+            retention:
+              max_count: 3
+              max_age_days: 7
+            files:
+              - name: "{{targetName}}"
+                paths: [{{source}}]
+                schedule: daily
+            """);
+
+        Assert.Throws<ConfigurationException>(() => new YamlConfigLoader().Load(path));
+    }
+
     private static string WriteEnvironmentConfig(TempDirectory temp, string source, string environmentYaml)
     {
         var path = Path.Combine(temp.Path, "lutra.yaml");

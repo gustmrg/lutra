@@ -2,6 +2,7 @@ using System.Runtime.InteropServices;
 using Lutra.CLI.Commands.Config;
 using Lutra.CLI.Infrastructure;
 using Lutra.Core.Configuration;
+using Lutra.Core.Recovery;
 using Spectre.Console;
 using Spectre.Console.Cli;
 
@@ -54,6 +55,13 @@ public sealed class ScheduleInstallCommand : AsyncCommand<TargetSettings>
             {
                 InstallInventoryUnit(lutraPath, resolvedConfigPath, resolvedEnvPath, inventory.Schedule);
                 AnsiConsole.MarkupLine($"  [green]Installed[/] lutra-inventory.timer ({inventory.Schedule.EscapeMarkup()})");
+            }
+
+            if (settings.Target is null && config.Environment is { Enabled: true } environment)
+            {
+                InstallEnvironmentUnit(lutraPath, resolvedConfigPath, resolvedEnvPath, environment.Schedule);
+                AnsiConsole.MarkupLine(
+                    $"  [green]Installed[/] {EnvironmentScheduleUnits.UnitName}.timer ({environment.Schedule.EscapeMarkup()})");
             }
 
             AnsiConsole.MarkupLine($"\nRun [blue]sudo systemctl daemon-reload[/] to load the new units.");
@@ -151,5 +159,18 @@ public sealed class ScheduleInstallCommand : AsyncCommand<TargetSettings>
 
         File.WriteAllText(Path.Combine(SystemdDir, $"{unitName}.service"), serviceContent);
         File.WriteAllText(Path.Combine(SystemdDir, $"{unitName}.timer"), timerContent);
+    }
+
+    private static void InstallEnvironmentUnit(
+        string lutraPath,
+        string configPath,
+        string envFilePath,
+        string schedule)
+    {
+        var content = EnvironmentScheduleUnits.Build(lutraPath, configPath, envFilePath, schedule);
+        File.WriteAllText(
+            Path.Combine(SystemdDir, EnvironmentScheduleUnits.UnitName + ".service"), content.Service);
+        File.WriteAllText(
+            Path.Combine(SystemdDir, EnvironmentScheduleUnits.UnitName + ".timer"), content.Timer);
     }
 }

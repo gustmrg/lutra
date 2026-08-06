@@ -57,7 +57,8 @@ public sealed class EnvironmentRecoveryTests
             Kind = EnvironmentRecoverySourceKind.File,
             PayloadPath = "payload/files/app.tar.gz",
             SizeBytes = 3,
-            Sha256 = new string('a', 64)
+            Sha256 = new string('a', 64),
+            RestoreOrder = 0
         };
 
         var error = await Assert.ThrowsAsync<InvalidDataException>(() =>
@@ -154,7 +155,8 @@ public sealed class EnvironmentRecoveryTests
             Kind = (EnvironmentRecoverySourceKind)99,
             PayloadPath = source.PayloadPath,
             SizeBytes = source.SizeBytes,
-            Sha256 = source.Sha256
+            Sha256 = source.Sha256,
+            RestoreOrder = source.RestoreOrder
         };
 
         var error = await Assert.ThrowsAsync<InvalidDataException>(() =>
@@ -274,7 +276,8 @@ public sealed class EnvironmentRecoveryTests
             Kind = kind,
             PayloadPath = $"payload/{directory}/{name}.tar.gz",
             SizeBytes = bytes.Length,
-            Sha256 = Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant()
+            Sha256 = Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant(),
+            RestoreOrder = kind == EnvironmentRecoverySourceKind.File ? 0 : 1
         };
     }
 

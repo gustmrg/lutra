@@ -138,7 +138,8 @@ databases:
   #   # sql_server_backup_kind: full  # full, differential, or log
 
 # Optional server inventory snapshots (restoration aid, not system-state backup).
-# Collector failures are recorded in the snapshot and never fail a backup run.
+# Collector failures never fail ordinary backups. Required collector failures
+# abort environment recovery so an incomplete set is not published.
 # inventory:
 #   enabled: true
 #   schedule: "*-*-* 04:00:00"
@@ -179,6 +180,26 @@ databases:
 #       - node_modules                # also matches any path segment with this name
 #     schedule: "*-*-* 03:30:00"
 #     compression: gzip
+
+# Optional coherent VPS environment recovery set. This artifact is plaintext,
+# excluded from built-in sync, and must be kept in restricted storage. Common
+# secret paths in file targets, such as .env, private keys, credentials, and
+# secrets, are always excluded and cannot be re-enabled. Volume contents cannot
+# be classified; do not select credential-store volumes. Restore secret values
+# from an external secret service or manually.
+# environment:
+#   enabled: true
+#   acknowledge_plaintext: true
+#   schedule: "Sun *-*-* 01:00:00"
+#   targets: [app-config, app-uploads]
+#   exclude: ["*.token"]
+#   systemd_units: [nginx.service, myapp.service]
+#   docker_containers: [myapp]
+#   retention:
+#     max_count: 4
+#     max_age_days: 90
+#     mode: both
+#     keep_at_least: 1
 """;
     }
 

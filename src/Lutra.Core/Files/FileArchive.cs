@@ -32,7 +32,22 @@ public static class FileArchive
         await using var fileStream = new FileStream(
             outputPath, FileMode.Create, FileAccess.Write, FileShare.None, 81920, useAsync: true);
 
-        await CreateAsync(paths, excludePatterns, fileStream, compression, cancellationToken);
+        await CreateCoreAsync(paths, excludePatterns, fileStream, compression, null, false, cancellationToken);
+    }
+
+    /// <summary>Creates an archive and returns archive-relative paths omitted by exclusion rules.</summary>
+    public static async Task<IReadOnlyList<string>> CreateWithReportAsync(
+        IReadOnlyList<string> paths,
+        IReadOnlyList<string> excludePatterns,
+        string outputPath,
+        CompressionType compression,
+        CancellationToken cancellationToken = default)
+    {
+        var excluded = new List<string>();
+        await using var output = new FileStream(
+            outputPath, FileMode.Create, FileAccess.Write, FileShare.None, 81920, useAsync: true);
+        await CreateCoreAsync(paths, excludePatterns, output, compression, excluded.Add, true, cancellationToken);
+        return excluded;
     }
 
     /// <summary>Creates a tar archive in a caller-owned output stream.</summary>
@@ -42,6 +57,18 @@ public static class FileArchive
         Stream output,
         CompressionType compression,
         CancellationToken cancellationToken = default)
+    {
+        await CreateCoreAsync(paths, excludePatterns, output, compression, null, false, cancellationToken);
+    }
+
+    private static async Task CreateCoreAsync(
+        IReadOnlyList<string> paths,
+        IReadOnlyList<string> excludePatterns,
+        Stream output,
+        CompressionType compression,
+        Action<string>? onExcluded,
+        bool rejectSymbolicLinks,
+        CancellationToken cancellationToken)
     {
         if (!output.CanWrite)
             throw new ArgumentException("Output stream must be writable.", nameof(output));
@@ -60,7 +87,8 @@ public static class FileArchive
             if (!File.Exists(fullPath) && !Directory.Exists(fullPath))
                 throw new FileNotFoundException($"Configured path does not exist: {fullPath}", fullPath);
 
-            await AddPathAsync(writer, fullPath, excludePatterns, cancellationToken);
+            await AddPathAsync(
+                writer, fullPath, excludePatterns, onExcluded, rejectSymbolicLinks, cancellationToken);
         }
     }
 
@@ -98,27 +126,45 @@ public static class FileArchive
         TarWriter writer,
         string fullPath,
         IReadOnlyList<string> excludePatterns,
+        Action<string>? onExcluded,
+        bool rejectSymbolicLinks,
         CancellationToken cancellationToken)
     {
         var entryName = ToEntryName(fullPath);
+        if (rejectSymbolicLinks && IsSymbolicLink(fullPath))
+        {
+            if (IsExcluded(entryName, excludePatterns) || IsExcluded(entryName + "/", excludePatterns))
+            {
+                onExcluded?.Invoke(entryName);
+                return;
+            }
+            throw new InvalidDataException($"Symbolic links are not supported in environment recovery sources: {entryName}");
+        }
 
         if (Directory.Exists(fullPath))
         {
             if (IsExcluded(entryName + "/", excludePatterns))
+            {
+                onExcluded?.Invoke(entryName + "/");
                 return;
+            }
 
             var dirEntry = new PaxTarEntry(TarEntryType.Directory, entryName + "/");
             ApplyMetadata(dirEntry, fullPath);
             await writer.WriteEntryAsync(dirEntry, cancellationToken);
 
             foreach (var child in Directory.EnumerateFileSystemEntries(fullPath).Order(StringComparer.Ordinal))
-                await AddPathAsync(writer, child, excludePatterns, cancellationToken);
+                await AddPathAsync(
+                    writer, child, excludePatterns, onExcluded, rejectSymbolicLinks, cancellationToken);
 
             return;
         }
 
         if (IsExcluded(entryName, excludePatterns))
+        {
+            onExcluded?.Invoke(entryName);
             return;
+        }
 
         await using var dataStream = new FileStream(
             fullPath, FileMode.Open, FileAccess.Read, FileShare.Read,
@@ -131,6 +177,9 @@ public static class FileArchive
         ApplyMetadata(entry, fullPath);
         await writer.WriteEntryAsync(entry, cancellationToken);
     }
+
+    private static bool IsSymbolicLink(string path)
+        => (File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0;
 
     private static string ToEntryName(string fullPath)
     {

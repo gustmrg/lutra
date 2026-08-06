@@ -1,25 +1,58 @@
 using System.Reflection;
-using System.Text;
 using System.Text.Json;
 using Lutra.Core.Backup;
 using Lutra.Core.Configuration;
 
 namespace Lutra.Core.Inventory;
 
-/// <summary>
-/// Creates best-effort, secret-conscious snapshots of host state for disaster recovery.
-/// Collector failures are written into the snapshot and do not fail the snapshot.
-/// </summary>
-public sealed class InventoryService
+/// <summary>Collects and persists secret-conscious host inventory snapshots.</summary>
+public interface IInventoryCollector
 {
-    private static readonly string[] AllCollectors =
-        ["docker", "packages", "systemd", "crontabs", "firewall"];
+    Task<InventorySnapshot> CollectSnapshotAsync(
+        InventoryCollectionPolicy? policy = null,
+        CancellationToken cancellationToken = default);
+}
+
+public sealed class InventoryService : IInventoryCollector
+{
+    private static readonly string[] StandaloneCollectors =
+        ["packages", "docker", "systemd", "crontabs", "firewall"];
 
     private readonly BackupConfig _config;
+    private readonly IHostProcessRunner _runner;
 
-    public InventoryService(BackupConfig config)
+    public InventoryService(BackupConfig config, IHostProcessRunner? runner = null)
     {
         _config = config;
+        _runner = runner ?? new SystemHostProcessRunner();
+    }
+
+    public async Task<InventorySnapshot> CollectSnapshotAsync(
+        InventoryCollectionPolicy? policy = null,
+        CancellationToken cancellationToken = default)
+    {
+        policy ??= new InventoryCollectionPolicy();
+        var optional = policy.OptionalCollectors ?? [];
+        var sections = new List<InventorySection> { await CollectOsAsync(cancellationToken) };
+        if (policy.IncludePackages || policy.RequirePackages)
+            sections.Add(await CollectPackagesAsync(policy.RequirePackages, cancellationToken));
+        if (policy.IncludeDocker || policy.RequireDocker)
+            sections.Add(await CollectDockerAsync(policy.RequireDocker, cancellationToken));
+        if (policy.IncludeSystemd || policy.RequireSystemd)
+            sections.Add(await CollectSystemdAsync(policy.RequireSystemd, cancellationToken));
+
+        if (optional.Contains("crontabs", StringComparer.OrdinalIgnoreCase))
+            sections.Add(await CollectCrontabAsync(cancellationToken));
+        if (optional.Contains("firewall", StringComparer.OrdinalIgnoreCase))
+            sections.Add(await CollectFirewallAsync(cancellationToken));
+
+        return new InventorySnapshot
+        {
+            CapturedAt = DateTime.UtcNow,
+            Host = System.Environment.MachineName,
+            LutraVersion = GetVersion(),
+            Sections = sections.OrderBy(section => section.Name, StringComparer.Ordinal).ToList()
+        };
     }
 
     public async Task<InventoryResult> CaptureAsync(CancellationToken cancellationToken = default)
@@ -38,280 +71,295 @@ public sealed class InventoryService
         {
             Directory.CreateDirectory(directory);
             await using var targetLock = TargetLock.Acquire(_config.BackupDirectory, "inventory", "Inventory");
-
-            var document = new StringBuilder();
-            document.AppendLine("# Lutra Server Inventory");
-            document.AppendLine();
-            document.AppendLine($"- Captured (UTC): `{startedAt:O}`");
-            document.AppendLine($"- Host: `{Environment.MachineName}`");
-            document.AppendLine($"- Lutra version: `{GetVersion()}`");
-            document.AppendLine();
-            document.AppendLine("> This is a restoration aid, not a backup of system state. Secret values and cron commands are intentionally omitted.");
-
-            var collectors = inventory.Collectors ?? AllCollectors.ToList();
-            foreach (var collector in collectors.Distinct(StringComparer.OrdinalIgnoreCase))
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                document.AppendLine();
-                document.AppendLine(await CollectAsync(collector.ToLowerInvariant(), cancellationToken));
-            }
-
-            await File.WriteAllTextAsync(tempPath, document.ToString(), cancellationToken);
+            var collectors = inventory.Collectors ?? StandaloneCollectors.ToList();
+            var snapshot = await CollectSnapshotAsync(
+                new InventoryCollectionPolicy(
+                    OptionalCollectors: collectors,
+                    IncludePackages: collectors.Contains("packages", StringComparer.OrdinalIgnoreCase),
+                    IncludeDocker: collectors.Contains("docker", StringComparer.OrdinalIgnoreCase),
+                    IncludeSystemd: collectors.Contains("systemd", StringComparer.OrdinalIgnoreCase)),
+                cancellationToken);
+            await File.WriteAllTextAsync(tempPath, InventoryRenderer.ToMarkdown(snapshot), cancellationToken);
             File.Move(tempPath, finalPath);
 
             var checksum = await BackupIntegrity.ComputeSha256Async(finalPath, cancellationToken);
             await BackupIntegrity.WriteChecksumFileAsync(finalPath, checksum, cancellationToken);
             ApplyRetention(directory, _config.Retention);
-
             return new InventoryResult(true, finalPath, null);
         }
-        catch (Exception ex)
+        catch (OperationCanceledException)
         {
-            if (File.Exists(tempPath))
-                File.Delete(tempPath);
-            return new InventoryResult(false, null, ex.Message);
+            DeleteIfExists(tempPath);
+            throw;
+        }
+        catch
+        {
+            DeleteIfExists(tempPath);
+            return new InventoryResult(false, null, "Inventory collection failed.");
         }
     }
 
-    private static async Task<string> CollectAsync(string collector, CancellationToken cancellationToken)
+    private async Task<InventorySection> CollectOsAsync(CancellationToken cancellationToken)
     {
-        return collector switch
+        var uname = await _runner.RunAsync("uname", ["-srmo"], cancellationToken);
+        var release = await _runner.RunAsync("cat", ["/etc/os-release"], cancellationToken);
+        if (!uname.IsSuccess || !release.IsSuccess)
+            return Failed("os", required: true, !uname.IsSuccess ? uname : release);
+
+        var attributes = new SortedDictionary<string, string>(StringComparer.Ordinal)
         {
-            "docker" => await CollectDockerAsync(cancellationToken),
-            "packages" => await CollectPackagesAsync(cancellationToken),
-            "systemd" => await CollectSystemdAsync(cancellationToken),
-            "crontabs" => await CollectCrontabsAsync(cancellationToken),
-            "firewall" => await CollectCommandAsync("Firewall", "ufw", ["status", "verbose"], cancellationToken),
-            _ => $"## {collector}\n\n_Not collected: unknown collector._"
+            ["architecture"] = System.Runtime.InteropServices.RuntimeInformation.OSArchitecture.ToString(),
+            ["kernel"] = FirstLine(uname.StdOut)
         };
+        foreach (var line in release.StdOut.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var parts = line.Split('=', 2);
+            if (parts.Length == 2 && parts[0] is "ID" or "VERSION_ID" or "PRETTY_NAME")
+                attributes[parts[0].ToLowerInvariant()] = parts[1].Trim('"');
+        }
+        return Succeeded("os", required: true, [new InventoryEntry { Kind = "host", Name = "operating-system", Attributes = attributes }]);
     }
 
-    private static async Task<string> CollectDockerAsync(CancellationToken cancellationToken)
-    {
-        var section = new StringBuilder("## Docker\n\n");
-        var ps = await HostProcess.RunAsync("docker",
-            ["ps", "--all", "--format", "table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}"], cancellationToken);
-        AppendResult(section, "Containers", ps);
-
-        if (ps.ExitCode == -1)
-            return section.ToString().TrimEnd();
-
-        // ArgumentList deliberately does not invoke a shell, so obtain IDs separately.
-        var ids = await HostProcess.RunAsync("docker", ["ps", "-aq"], cancellationToken);
-        if (ids.IsSuccess)
-        {
-            var containerIds = ids.StdOut.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-            if (containerIds.Length > 0)
-            {
-                var inspect = await HostProcess.RunAsync("docker", ["inspect", .. containerIds], cancellationToken);
-                AppendDockerInspect(section, inspect);
-            }
-            else
-            {
-                section.AppendLine("### Container configuration\n\n_No containers found._\n");
-            }
-        }
-        else
-        {
-            AppendResult(section, "Container configuration", ids);
-        }
-
-        var networks = await HostProcess.RunAsync("docker",
-            ["network", "ls", "--format", "table {{.Name}}\t{{.Driver}}\t{{.Scope}}"], cancellationToken);
-        AppendResult(section, "Networks", networks);
-        var volumes = await HostProcess.RunAsync("docker",
-            ["volume", "ls", "--format", "table {{.Name}}\t{{.Driver}}"], cancellationToken);
-        AppendResult(section, "Volumes", volumes);
-        return section.ToString().TrimEnd();
-    }
-
-    private static void AppendDockerInspect(StringBuilder section, HostProcessResult result)
-    {
-        section.AppendLine("### Container configuration");
-        section.AppendLine();
-        if (!result.IsSuccess)
-        {
-            section.AppendLine($"_Unavailable: {SafeError(result)}_");
-            return;
-        }
-
-        try
-        {
-            using var json = JsonDocument.Parse(result.StdOut);
-            foreach (var container in json.RootElement.EnumerateArray())
-            {
-                var name = GetString(container, "Name")?.TrimStart('/') ?? "unknown";
-                var config = container.GetProperty("Config");
-                section.AppendLine($"#### {name}");
-                section.AppendLine($"- Image: `{GetString(config, "Image") ?? "unknown"}`");
-
-                if (config.TryGetProperty("Env", out var env) && env.ValueKind == JsonValueKind.Array)
-                {
-                    var names = env.EnumerateArray()
-                        .Select(e => e.GetString()?.Split('=', 2)[0])
-                        .Where(e => !string.IsNullOrWhiteSpace(e));
-                    section.AppendLine($"- Environment variable names: {string.Join(", ", names.Select(n => $"`{n}`"))}");
-                }
-
-                if (container.TryGetProperty("Mounts", out var mounts))
-                {
-                    var values = mounts.EnumerateArray().Select(m =>
-                        $"{GetString(m, "Type")}:{GetString(m, "Source")} -> {GetString(m, "Destination")}");
-                    section.AppendLine($"- Mounts: {string.Join("; ", values)}");
-                }
-
-                if (container.TryGetProperty("NetworkSettings", out var networkSettings)
-                    && networkSettings.TryGetProperty("Networks", out var networks))
-                    section.AppendLine($"- Networks: {string.Join(", ", networks.EnumerateObject().Select(p => p.Name))}");
-
-                section.AppendLine();
-            }
-        }
-        catch (Exception ex) when (ex is JsonException or InvalidOperationException)
-        {
-            section.AppendLine($"_Could not summarize docker inspect output: {ex.Message}_");
-        }
-    }
-
-    private static string? GetString(JsonElement element, string property)
-        => element.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String
-            ? value.GetString()
-            : null;
-
-    private static async Task<string> CollectPackagesAsync(CancellationToken cancellationToken)
+    private async Task<InventorySection> CollectPackagesAsync(bool required, CancellationToken cancellationToken)
     {
         foreach (var candidate in new[]
                  {
-                     ("dpkg-query", new[] { "-W", "-f=${binary:Package} ${Version}\\n" }),
-                     ("rpm", new[] { "-qa" }),
+                     ("dpkg-query", new[] { "-W", "-f=${binary:Package}\t${Version}\\n" }),
+                     ("rpm", new[] { "-qa", "--qf", "%{NAME}\\t%{VERSION}-%{RELEASE}\\n" }),
                      ("apk", new[] { "info", "-vv" })
                  })
         {
-            var result = await HostProcess.RunAsync(candidate.Item1, candidate.Item2, cancellationToken);
-            if (result.ExitCode != -1)
-                return FormatResult("Installed packages", result);
-        }
-
-        return "## Installed packages\n\n_Unavailable: no supported package manager found._";
-    }
-
-    private static async Task<string> CollectSystemdAsync(CancellationToken cancellationToken)
-    {
-        var section = new StringBuilder("## Systemd\n\n");
-        AppendResult(section, "Enabled units", await HostProcess.RunAsync("systemctl",
-            ["list-unit-files", "--state=enabled", "--no-pager", "--no-legend"], cancellationToken));
-        AppendResult(section, "Running services", await HostProcess.RunAsync("systemctl",
-            ["list-units", "--type=service", "--state=running", "--no-pager", "--no-legend"], cancellationToken));
-        return section.ToString().TrimEnd();
-    }
-
-    private static async Task<string> CollectCrontabsAsync(CancellationToken cancellationToken)
-    {
-        var section = new StringBuilder("## User crontabs\n\n");
-        section.AppendLine("Commands are omitted because cron entries commonly contain credentials.");
-
-        var users = new List<string> { Environment.UserName };
-        if (Environment.IsPrivilegedProcess)
-        {
-            var passwd = await HostProcess.RunAsync("getent", ["passwd"], cancellationToken);
-            if (passwd.IsSuccess)
-            {
-                users = passwd.StdOut.Split('\n', StringSplitOptions.RemoveEmptyEntries)
-                    .Select(line => line.Split(':'))
-                    .Where(fields => fields.Length >= 7
-                        && int.TryParse(fields[2], out var uid)
-                        && (uid == 0 || uid >= 1000)
-                        && !fields[6].Contains("nologin", StringComparison.OrdinalIgnoreCase)
-                        && !fields[6].EndsWith("/false", StringComparison.OrdinalIgnoreCase))
-                    .Select(fields => fields[0])
-                    .Distinct(StringComparer.Ordinal)
-                    .ToList();
-            }
-        }
-
-        var found = false;
-        foreach (var user in users)
-        {
-            var args = Environment.IsPrivilegedProcess
-                ? new[] { "-l", "-u", user }
-                : new[] { "-l" };
-            var result = await HostProcess.RunAsync("crontab", args, cancellationToken);
+            var result = await _runner.RunAsync(candidate.Item1, candidate.Item2, cancellationToken);
             if (result.ExitCode == -1)
-            {
-                section.AppendLine("\n_Unavailable: crontab is not installed._");
-                return section.ToString().TrimEnd();
-            }
-            if (!result.IsSuccess || string.IsNullOrWhiteSpace(result.StdOut))
                 continue;
+            if (!result.IsSuccess)
+                return Failed("packages", required, result);
 
-            found = true;
-            section.AppendLine();
-            section.AppendLine($"### {user}");
-            section.AppendLine();
-            AppendSanitizedCrontab(section, result.StdOut);
+            var entries = result.StdOut.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(line => line.Split('\t', 2))
+                .Select(parts => new InventoryEntry
+                {
+                    Kind = "package",
+                    Name = parts[0],
+                    Attributes = new SortedDictionary<string, string>(StringComparer.Ordinal)
+                    {
+                        ["version"] = parts.Length == 2 ? parts[1] : "installed"
+                    }
+                })
+                .OrderBy(entry => entry.Name, StringComparer.Ordinal)
+                .ToList();
+            return Succeeded("packages", required, entries);
         }
 
-        if (!found)
-            section.AppendLine("\n_No readable user crontabs found._");
-        return section.ToString().TrimEnd();
+        return required ? Failed("packages", true, new HostProcessResult(-1, "", "")) : NotApplicable("packages");
     }
 
-    private static void AppendSanitizedCrontab(StringBuilder section, string crontab)
+    private async Task<InventorySection> CollectDockerAsync(bool required, CancellationToken cancellationToken)
     {
-        section.AppendLine("```text");
-        foreach (var rawLine in crontab.Split('\n'))
+        var ids = await _runner.RunAsync("docker", ["ps", "-aq"], cancellationToken);
+        if (ids.ExitCode == -1)
+            return required ? Failed("docker", true, ids) : NotApplicable("docker");
+        if (!ids.IsSuccess)
+            return Failed("docker", required, ids);
+
+        var entries = new List<InventoryEntry>();
+        var version = await _runner.RunAsync("docker", ["--version"], cancellationToken);
+        if (!version.IsSuccess)
+            return Failed("docker", required, version);
+        entries.Add(new InventoryEntry
         {
-            var line = rawLine.Trim();
+            Kind = "tool",
+            Name = "docker",
+            Attributes = new() { ["version"] = FirstLine(version.StdOut) }
+        });
+        var containerIds = ids.StdOut.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (containerIds.Length > 0)
+        {
+            var inspect = await _runner.RunAsync("docker", ["inspect", .. containerIds], cancellationToken);
+            if (!inspect.IsSuccess)
+                return Failed("docker", required, inspect);
+            try
+            {
+                using var json = JsonDocument.Parse(inspect.StdOut);
+                foreach (var container in json.RootElement.EnumerateArray())
+                    entries.Add(ParseContainer(container));
+            }
+            catch (JsonException)
+            {
+                return Failed("docker", required, new HostProcessResult(1, "", ""), "invalid_output");
+            }
+        }
+
+        if (!await AddDockerListAsync(entries, "network", ["network", "ls", "--format", "{{.Name}}\t{{.Driver}}"], cancellationToken)
+            || !await AddDockerListAsync(entries, "volume", ["volume", "ls", "--format", "{{.Name}}\t{{.Driver}}"], cancellationToken)
+            || !await AddDockerListAsync(entries, "image", ["image", "ls", "--digests", "--format", "{{.Repository}}:{{.Tag}}\t{{.Digest}}"], cancellationToken))
+            return Failed("docker", required, new HostProcessResult(1, "", ""));
+        return Succeeded("docker", required, entries.OrderBy(entry => entry.Kind).ThenBy(entry => entry.Name).ToList());
+    }
+
+    private async Task<InventorySection> CollectSystemdAsync(bool required, CancellationToken cancellationToken)
+    {
+        var version = await _runner.RunAsync("systemctl", ["--version"], cancellationToken);
+        if (version.ExitCode == -1)
+            return required ? Failed("systemd", true, version) : NotApplicable("systemd");
+        var enabled = await _runner.RunAsync(
+            "systemctl", ["list-unit-files", "--state=enabled", "--no-pager", "--no-legend"], cancellationToken);
+        var running = await _runner.RunAsync(
+            "systemctl", ["list-units", "--type=service", "--state=running", "--no-pager", "--no-legend"], cancellationToken);
+        if (!version.IsSuccess || !enabled.IsSuccess || !running.IsSuccess)
+            return Failed("systemd", required, !version.IsSuccess ? version : !enabled.IsSuccess ? enabled : running);
+
+        var entries = new List<InventoryEntry>
+        {
+            new() { Kind = "tool", Name = "systemd", Attributes = new() { ["version"] = FirstLine(version.StdOut) } }
+        };
+        entries.AddRange(ParseUnitLines(enabled.StdOut, "enabled-unit"));
+        entries.AddRange(ParseUnitLines(running.StdOut, "running-service"));
+        return Succeeded("systemd", required, entries);
+    }
+
+    private async Task<InventorySection> CollectCrontabAsync(CancellationToken cancellationToken)
+    {
+        var result = await _runner.RunAsync("crontab", ["-l"], cancellationToken);
+        if (result.ExitCode == -1)
+            return NotApplicable("crontabs");
+        if (!result.IsSuccess)
+            return Succeeded("crontabs", false, []);
+
+        var entries = new List<InventoryEntry>();
+        foreach (var raw in result.StdOut.Split('\n'))
+        {
+            var line = raw.Trim();
             if (line.Length == 0 || line.StartsWith('#'))
                 continue;
-            if (line.StartsWith('@'))
-            {
-                var firstSpace = line.IndexOf(' ');
-                section.AppendLine(firstSpace > 0 ? $"{line[..firstSpace]} [command omitted]" : line);
-                continue;
-            }
-
             var fields = line.Split((char[]?)null, 6, StringSplitOptions.RemoveEmptyEntries);
-            if (fields.Length >= 5)
-                section.AppendLine($"{string.Join(' ', fields.Take(5))} [command omitted]");
+            var schedule = line.StartsWith('@') ? fields[0] : fields.Length >= 5 ? string.Join(' ', fields.Take(5)) : "unknown";
+            entries.Add(new InventoryEntry { Kind = "cron-schedule", Name = schedule });
         }
-        section.AppendLine("```");
+        return Succeeded("crontabs", false, entries);
     }
 
-    private static async Task<string> CollectCommandAsync(
-        string heading, string command, IReadOnlyList<string> args, CancellationToken cancellationToken)
-        => FormatResult(heading, await HostProcess.RunAsync(command, args, cancellationToken));
-
-    private static string FormatResult(string heading, HostProcessResult result)
+    private async Task<InventorySection> CollectFirewallAsync(CancellationToken cancellationToken)
     {
-        var section = new StringBuilder($"## {heading}\n\n");
-        AppendOutput(section, result);
-        return section.ToString().TrimEnd();
-    }
-
-    private static void AppendResult(StringBuilder section, string heading, HostProcessResult result)
-    {
-        section.AppendLine($"### {heading}");
-        section.AppendLine();
-        AppendOutput(section, result);
-        section.AppendLine();
-    }
-
-    private static void AppendOutput(StringBuilder section, HostProcessResult result)
-    {
+        var result = await _runner.RunAsync("ufw", ["status", "verbose"], cancellationToken);
+        if (result.ExitCode == -1)
+            return NotApplicable("firewall");
         if (!result.IsSuccess)
-        {
-            section.AppendLine($"_Unavailable: {SafeError(result)}_");
-            return;
-        }
+            return Failed("firewall", false, result);
 
-        section.AppendLine("```text");
-        section.AppendLine(result.StdOut.TrimEnd());
-        section.AppendLine("```");
+        var entries = result.StdOut.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(line => line.Split('#', 2)[0].Trim())
+            .Where(line => line.Length > 0)
+            .Select((line, index) => new InventoryEntry { Kind = "firewall-state", Name = $"line-{index + 1}", Attributes = new() { ["value"] = line } })
+            .ToList();
+        return Succeeded("firewall", false, entries);
     }
 
-    private static string SafeError(HostProcessResult result)
-        => result.ExitCode == -1 ? "tool not installed" : $"command exited with code {result.ExitCode}";
+    private async Task<bool> AddDockerListAsync(
+        List<InventoryEntry> entries,
+        string kind,
+        IReadOnlyList<string> arguments,
+        CancellationToken cancellationToken)
+    {
+        var result = await _runner.RunAsync("docker", arguments, cancellationToken);
+        if (!result.IsSuccess)
+            return false;
+        foreach (var line in result.StdOut.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var parts = line.Split('\t', 2);
+            entries.Add(new InventoryEntry
+            {
+                Kind = kind,
+                Name = parts[0],
+                Attributes = parts.Length == 2 ? new() { [kind == "image" ? "digest" : "driver"] = parts[1] } : new()
+            });
+        }
+        return true;
+    }
+
+    private static InventoryEntry ParseContainer(JsonElement container)
+    {
+        var name = GetString(container, "Name")?.TrimStart('/') ?? "unknown";
+        var config = container.TryGetProperty("Config", out var configValue) ? configValue : default;
+        var attributes = new SortedDictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["image"] = GetString(config, "Image") ?? "unknown",
+            ["image_id"] = GetString(container, "Image") ?? "unknown"
+        };
+        if (config.ValueKind != JsonValueKind.Undefined
+            && config.TryGetProperty("Env", out var environment)
+            && environment.ValueKind == JsonValueKind.Array)
+        {
+            attributes["environment_names"] = string.Join(',', environment.EnumerateArray()
+                .Select(value => value.GetString()?.Split('=', 2)[0])
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .Order(StringComparer.Ordinal));
+        }
+        if (container.TryGetProperty("HostConfig", out var host)
+            && host.TryGetProperty("RestartPolicy", out var restart))
+            attributes["restart_policy"] = GetString(restart, "Name") ?? "none";
+        if (container.TryGetProperty("Mounts", out var mounts) && mounts.ValueKind == JsonValueKind.Array)
+            attributes["mounts"] = string.Join(';', mounts.EnumerateArray().Select(mount =>
+                $"{GetString(mount, "Type")}:{GetString(mount, "Source")}->{GetString(mount, "Destination")}"));
+        if (container.TryGetProperty("NetworkSettings", out var networkSettings)
+            && networkSettings.TryGetProperty("Networks", out var networks))
+            attributes["networks"] = string.Join(',', networks.EnumerateObject().Select(network => network.Name).Order());
+        if (container.TryGetProperty("NetworkSettings", out networkSettings)
+            && networkSettings.TryGetProperty("Ports", out var ports)
+            && ports.ValueKind == JsonValueKind.Object)
+        {
+            attributes["ports"] = string.Join(';', ports.EnumerateObject()
+                .OrderBy(port => port.Name, StringComparer.Ordinal)
+                .Select(port => FormatPort(port.Name, port.Value)));
+        }
+        return new InventoryEntry { Kind = "container", Name = name, Attributes = attributes };
+    }
+
+    private static string FormatPort(string containerPort, JsonElement bindings)
+    {
+        if (bindings.ValueKind != JsonValueKind.Array)
+            return containerPort;
+        var published = bindings.EnumerateArray()
+            .Select(binding => $"{GetString(binding, "HostIp") ?? ""}:{GetString(binding, "HostPort") ?? ""}")
+            .Order(StringComparer.Ordinal);
+        return $"{containerPort}={string.Join(',', published)}";
+    }
+
+    private static IEnumerable<InventoryEntry> ParseUnitLines(string output, string kind)
+        => output.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(line => line.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).FirstOrDefault())
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Select(name => new InventoryEntry { Kind = kind, Name = name! });
+
+    private static string? GetString(JsonElement element, string property)
+        => element.ValueKind == JsonValueKind.Object
+           && element.TryGetProperty(property, out var value)
+           && value.ValueKind == JsonValueKind.String
+            ? value.GetString()
+            : null;
+
+    private static InventorySection Succeeded(string name, bool required, List<InventoryEntry> entries)
+        => new() { Name = name, Status = InventoryCollectorStatus.Succeeded, Required = required, ExitCode = 0, Entries = entries };
+
+    private static InventorySection Failed(
+        string name,
+        bool required,
+        HostProcessResult result,
+        string? category = null)
+        => new()
+        {
+            Name = name,
+            Status = InventoryCollectorStatus.Failed,
+            Required = required,
+            ExitCode = result.ExitCode,
+            ErrorCategory = category ?? (result.ExitCode == -1 ? "tool_unavailable" : "command_failed")
+        };
+
+    private static InventorySection NotApplicable(string name)
+        => new() { Name = name, Status = InventoryCollectorStatus.NotApplicable, Required = false };
+
+    private static string FirstLine(string value)
+        => value.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).FirstOrDefault() ?? "unknown";
 
     private static void ApplyRetention(string directory, RetentionPolicy retention)
     {
@@ -320,9 +368,7 @@ public sealed class InventoryService
             .OrderByDescending(file => file.LastWriteTimeUtc)
             .ToList();
         var cutoff = DateTime.UtcNow.AddDays(-retention.MaxAgeDays);
-
-        var candidates = files
-            .Select((file, index) => new
+        var candidates = files.Select((file, index) => new
             {
                 File = file,
                 Index = index,
@@ -333,21 +379,23 @@ public sealed class InventoryService
             .Where(item => retention.Mode == RetentionMode.Both
                 ? item.CountExceeded && item.AgeExceeded
                 : item.CountExceeded || item.AgeExceeded);
-
         foreach (var candidate in candidates)
         {
             File.Delete(candidate.File.FullName);
-            var checksum = BackupIntegrity.GetChecksumPath(candidate.File.FullName);
-            if (File.Exists(checksum))
-                File.Delete(checksum);
+            DeleteIfExists(BackupIntegrity.GetChecksumPath(candidate.File.FullName));
         }
     }
 
     private static string GetVersion()
-        => typeof(InventoryService).Assembly
-               .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
+        => typeof(InventoryService).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
            ?? typeof(InventoryService).Assembly.GetName().Version?.ToString()
            ?? "unknown";
+
+    private static void DeleteIfExists(string path)
+    {
+        if (File.Exists(path))
+            File.Delete(path);
+    }
 }
 
 public sealed record InventoryResult(bool Success, string? FilePath, string? ErrorMessage);

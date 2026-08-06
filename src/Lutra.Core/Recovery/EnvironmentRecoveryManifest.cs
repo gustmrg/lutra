@@ -49,6 +49,9 @@ public sealed class EnvironmentRecoverySource
 
     [JsonPropertyName("sha256")]
     public required string Sha256 { get; init; }
+
+    [JsonPropertyName("restore_order")]
+    public required int RestoreOrder { get; init; }
 }
 
 public enum EnvironmentRecoverySourceKind

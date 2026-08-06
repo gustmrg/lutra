@@ -432,6 +432,18 @@ databases:
   #   password_env: SQLSERVER_PASSWORD
   #   schedule: "*-*-* 02:00:00"    # Daily at 2 AM
   #   compression: gzip
+
+# Optional plaintext environment recovery. Common secret paths in file targets
+# are always excluded; volume contents cannot be classified. Restore secrets
+# externally, do not select credential-store volumes, and use restricted storage.
+# Built-in sync excludes these sets.
+# environment:
+#   enabled: true
+#   acknowledge_plaintext: true
+#   schedule: "Sun *-*-* 01:00:00"
+#   targets: [app-config, app-uploads]
+#   systemd_units: [nginx.service, myapp.service]
+#   docker_containers: [myapp]
 EOF
 
     # Replace placeholders with actual data directories

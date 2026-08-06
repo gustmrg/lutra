@@ -193,7 +193,12 @@ public static class EnvironmentRecoveryArchive
                 throw new InvalidDataException($"Invalid payload path '{source.PayloadPath}'.");
             if (source.SizeBytes < 0 || !IsSha256(source.Sha256))
                 throw new InvalidDataException($"Invalid payload metadata for '{source.Name}'.");
+            if (source.RestoreOrder < 0)
+                throw new InvalidDataException($"Invalid restore order for '{source.Name}'.");
         }
+
+        if (manifest.Sources.Select(source => source.RestoreOrder).Distinct().Count() != manifest.Sources.Count)
+            throw new InvalidDataException("Recovery source restore_order values must be unique.");
     }
 
     private static void ValidatePayloadMap(

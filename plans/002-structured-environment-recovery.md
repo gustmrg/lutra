@@ -31,7 +31,7 @@
 | Phase | Deliverable | Status | Review |
 |---|---|---|---|
 | 1 | Recovery-set contract, configuration, and safe archive primitives | Done | Approved 2026-08-05 |
-| 2 | Backup orchestration, inventory, retention, scheduling, and logs | TODO | - |
+| 2 | Backup orchestration, inventory, retention, scheduling, and logs | Done | Approved 2026-08-05 |
 | 3 | Guarded, idempotent restore and post-restore validation | TODO | - |
 | 4 | Clean-environment reconstruction drill, documentation, and release verification | TODO | - |
 
@@ -329,6 +329,25 @@ secret exclusions are proven and existing backup/restore tests remain unchanged.
 **Phase 2 gate**: one scheduled or manual command creates a complete plaintext,
 checksummed, versioned recovery set and clear sanitized logs; failures leave no
 published partial artifact and retention cannot separate its sidecars.
+
+**Phase 2 verification (2026-08-05)**:
+
+- `dotnet test Lutra.slnx --configuration Release`: 100 passed, 0 failed.
+- Environment lifecycle tests cover coherent success, source/inventory/archive/
+  verification/publication failures, lock contention, cancellation, history,
+  retention triples, stale staging and orphan-sidecar cleanup, Linux modes,
+  recursive source rejection, symlink rejection, and sentinel-secret absence.
+- Typed inventory tests cover deterministic JSON/Markdown, configured collector
+  subsets, required failure policy, package/tool/image/container/service details,
+  and sanitized malformed output and stderr.
+- Linux x64 and arm64 self-contained single-file publishes passed and contain no
+  standalone `libe_sqlite3.so`; CLI help exposes `environment backup`.
+- The package audit reports no vulnerable packages; `bash -n setup.sh` and
+  `git diff --check` passed.
+- Three independent Codex reviews were triaged. Fixes covered collector-subset
+  compatibility and stale orphan sidecars; the final review found no actionable
+  defects. Codex could not execute tests in its sandbox because MSBuild named
+  pipes were denied, so the test gate above was run in the workspace directly.
 
 ### Phase 3: Implement guarded and idempotent restore
 

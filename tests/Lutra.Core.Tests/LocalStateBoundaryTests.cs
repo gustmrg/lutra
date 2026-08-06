@@ -28,6 +28,7 @@ public sealed class LocalStateBoundaryTests
         Assert.Contains("/backup-history.json", invocation.Arguments);
         Assert.Contains("/.backup-history.lock", invocation.Arguments);
         Assert.Contains("/.locks/", invocation.Arguments);
+        Assert.Contains("/environment/", invocation.Arguments);
         Assert.Contains("*.tmp", invocation.Arguments);
         Assert.Contains("/lutra.db", invocation.Arguments);
         Assert.Contains("/lutra.db-wal", invocation.Arguments);
@@ -58,6 +59,7 @@ public sealed class LocalStateBoundaryTests
             invocation.Arguments[^2]);
         Assert.DoesNotContain(invocation.Arguments, argument => argument.Contains("lutra.db", StringComparison.Ordinal));
         Assert.DoesNotContain(invocation.Arguments, argument => argument.Contains("backup-history.json", StringComparison.Ordinal));
+        Assert.DoesNotContain("/environment/", invocation.Arguments);
         Assert.DoesNotContain(invocation.Arguments, argument => argument.Contains(config.StateDirectory!, StringComparison.Ordinal));
     }
 

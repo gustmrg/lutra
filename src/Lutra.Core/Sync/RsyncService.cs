@@ -246,6 +246,7 @@ public sealed class RsyncService
             "/backup-history.json",
             "/.backup-history.lock",
             "/.locks/",
+            "/environment/",
             "*.tmp",
             "/lutra.db",
             "/lutra.db-wal",
