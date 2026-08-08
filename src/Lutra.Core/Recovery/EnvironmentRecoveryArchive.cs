@@ -164,6 +164,15 @@ public static class EnvironmentRecoveryArchive
             || manifest.SystemdUnits is null
             || manifest.DockerContainers is null)
             throw new InvalidDataException("Recovery manifest lists cannot be null.");
+        if (manifest.RequiredTools.Any(tool => tool is not ("docker" or "systemctl"))
+            || manifest.RequiredTools.Distinct(StringComparer.Ordinal).Count() != manifest.RequiredTools.Count)
+            throw new InvalidDataException("Recovery manifest required_tools contains unsupported values.");
+        if (manifest.SystemdUnits.Any(unit => !IsSafeRuntimeName(unit) || !unit.EndsWith(".service", StringComparison.Ordinal))
+            || manifest.SystemdUnits.Distinct(StringComparer.Ordinal).Count() != manifest.SystemdUnits.Count)
+            throw new InvalidDataException("Recovery manifest systemd_units contains invalid values.");
+        if (manifest.DockerContainers.Any(name => !IsSafeRuntimeName(name))
+            || manifest.DockerContainers.Distinct(StringComparer.Ordinal).Count() != manifest.DockerContainers.Count)
+            throw new InvalidDataException("Recovery manifest docker_containers contains invalid values.");
 
         var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var paths = new HashSet<string>(StringComparer.Ordinal);
@@ -173,8 +182,10 @@ public static class EnvironmentRecoveryArchive
             if (source is null)
                 throw new InvalidDataException("Recovery sources cannot contain null entries.");
             if (string.IsNullOrWhiteSpace(source.Name)
+                || source.Name is "." or ".."
                 || source.Name.Contains('/')
                 || source.Name.Contains('\\')
+                || source.Name.Any(char.IsControl)
                 || !names.Add(source.Name))
                 throw new InvalidDataException("Recovery source names must be nonempty and unique.");
             if (previousName is not null && StringComparer.Ordinal.Compare(previousName, source.Name) >= 0)
@@ -317,6 +328,13 @@ public static class EnvironmentRecoveryArchive
 
     private static bool IsSha256(string? value)
         => value is { Length: 64 } && value.All(Uri.IsHexDigit);
+
+    private static bool IsSafeRuntimeName(string value)
+        => !string.IsNullOrWhiteSpace(value)
+           && value.Length <= 255
+           && value[0] != '-'
+           && value.All(character => char.IsAsciiLetterOrDigit(character)
+                                     || character is '.' or '_' or '-' or '@');
 
     private static void CreatePrivateDirectory(string path)
     {

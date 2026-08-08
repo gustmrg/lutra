@@ -263,6 +263,25 @@ public sealed class EnvironmentRecoveryTests
         Assert.DoesNotContain(names, name => name.EndsWith("server.key", StringComparison.Ordinal));
     }
 
+    [Fact]
+    public async Task RecoveryArchive_RejectsUntrustedTypedActionNames()
+    {
+        using var temp = new TempDirectory();
+        var payload = Path.Combine(temp.Path, "app.tar.gz");
+        await File.WriteAllTextAsync(payload, "payload");
+        var source = await SourceAsync("app", EnvironmentRecoverySourceKind.File, payload);
+        var manifest = Manifest(source);
+        manifest.SystemdUnits.Add("--evil.service");
+
+        var error = await Assert.ThrowsAsync<InvalidDataException>(() =>
+            EnvironmentRecoveryArchive.WriteAsync(
+                Path.Combine(temp.Path, "recovery.tar.gz"), manifest,
+                new Dictionary<string, string> { ["app"] = payload },
+                "{}", "inventory", "{}", "missing", "restore"));
+
+        Assert.Contains("systemd_units", error.Message);
+    }
+
     private static async Task<EnvironmentRecoverySource> SourceAsync(
         string name,
         EnvironmentRecoverySourceKind kind,

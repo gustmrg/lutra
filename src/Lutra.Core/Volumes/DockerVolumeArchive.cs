@@ -53,7 +53,17 @@ public static class DockerVolumeArchive
                 ?? throw new InvalidOperationException("Failed to start Docker.");
             var stdout = process.StandardOutput.ReadToEndAsync(cancellationToken);
             var stderr = process.StandardError.ReadToEndAsync(cancellationToken);
-            await process.WaitForExitAsync(cancellationToken);
+            try
+            {
+                await process.WaitForExitAsync(cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                if (!process.HasExited)
+                    process.Kill(entireProcessTree: true);
+                await process.WaitForExitAsync(CancellationToken.None);
+                throw;
+            }
             if (process.ExitCode != 0)
                 throw new InvalidOperationException($"Docker volume archive command failed: {(await stderr).Trim()}");
             _ = await stdout;

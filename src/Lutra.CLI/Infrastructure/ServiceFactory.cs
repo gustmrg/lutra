@@ -139,6 +139,9 @@ internal static class ServiceFactory
             CreateInventoryService(config));
     }
 
+    public static EnvironmentRestoreService CreateEnvironmentRestoreService(BackupConfig config)
+        => new(config);
+
     public static IBackupTarget ResolveTarget(BackupConfig config, string targetName)
     {
         var target = config.AllTargets().FirstOrDefault(

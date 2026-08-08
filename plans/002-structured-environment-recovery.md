@@ -32,7 +32,7 @@
 |---|---|---|---|
 | 1 | Recovery-set contract, configuration, and safe archive primitives | Done | Approved 2026-08-05 |
 | 2 | Backup orchestration, inventory, retention, scheduling, and logs | Done | Approved 2026-08-05 |
-| 3 | Guarded, idempotent restore and post-restore validation | TODO | - |
+| 3 | Guarded, idempotent restore and post-restore validation | Done | Pending |
 | 4 | Clean-environment reconstruction drill, documentation, and release verification | TODO | - |
 
 ## Outcome
@@ -373,6 +373,26 @@ published partial artifact and retention cannot separate its sidecars.
 **Phase 3 gate**: a valid set restores twice to a disposable root with the
 second run reporting no content changes; untrusted, corrupt, unsafe, or
 incomplete sets cannot modify the destination, volumes, or service state.
+
+**Phase 3 verification (2026-08-05)**:
+
+- `dotnet test Lutra.slnx --configuration Release`: 121 passed, 0 failed.
+- Restore tests cover checksum/descriptor/inventory inspection, dry-run
+  immutability, preflight privilege/tool/capacity failures, unsafe nested paths,
+  links/devices, case and hierarchy collisions, symlink ancestors, changed and
+  unchanged files, rollback copies, repeated convergence, plan-confirmation
+  drift, volume opt-in/consumer checks, service activation and failed
+  validation, cancellation, private resume reports, and sanitized JSONL logs.
+- Linux x64 and arm64 self-contained single-file publishes each contain one
+  executable and no standalone `libe_sqlite3.so`; CLI help exposes
+  `environment inspect` and `environment restore` with guarded apply options.
+- The package audit reports no vulnerable packages; `bash -n setup.sh` and
+  `git diff --check` passed.
+- Independent Codex reviews identified symlink-ancestor, split-filesystem
+  capacity, and root-marker apply gaps. All were corrected and covered by
+  regression tests. A final Codex rerun was unavailable because its usage limit
+  was reached; the full workspace verification above passed after the final
+  integrity and plan-binding changes.
 
 ### Phase 4: Prove reconstruction from a clean environment
 

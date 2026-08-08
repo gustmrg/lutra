@@ -69,6 +69,10 @@ app.Configure(config =>
         environment.SetDescription("Create and restore structured VPS environment recovery sets.");
         environment.AddCommand<EnvironmentBackupCommand>("backup")
             .WithDescription("Create a plaintext environment recovery set with secrets excluded.");
+        environment.AddCommand<EnvironmentInspectCommand>("inspect")
+            .WithDescription("Verify and summarize an environment recovery set.");
+        environment.AddCommand<EnvironmentRestoreCommand>("restore")
+            .WithDescription("Preflight or apply a guarded environment recovery plan.");
     });
 
     config.AddBranch<CommandSettings>("config", cfg =>
