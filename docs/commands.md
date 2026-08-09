@@ -72,6 +72,29 @@ lutra bundle                                 # Bundle latest artifacts and instr
 lutra bundle --encrypt                       # Encrypt a bundle with the global age recipient
 ```
 
+## Environment Recovery
+
+```bash
+lutra environment backup                     # Create a coherent plaintext recovery set
+lutra environment inspect <FILE>             # Verify and summarize a recovery set
+lutra environment restore <FILE> --root /mnt/recovery
+                                               # Preflight only; changes nothing
+lutra environment restore <FILE> --root /mnt/recovery --apply --yes
+                                               # Apply files beneath a staging root
+sudo lutra environment restore <FILE> --apply # Preflight and confirm restoration to /
+sudo lutra environment restore <FILE> --apply --include-volumes
+                                               # Also replace selected Docker volumes
+sudo lutra environment restore <FILE> --apply --activate-services
+                                               # Validate and activate declared services
+```
+
+`environment restore` is a separate workflow from database `restore` and from
+`bundle`. It always preflights the complete set first. `--include-volumes` is
+destructive, and `--activate-services` is opt-in; services otherwise remain
+stopped. Applying non-interactively requires `--yes`. Existing changed files
+are copied under `<state_directory>/rollbacks/environment/` unless
+`--no-rollback-copy` is supplied.
+
 ## Configuration
 
 ```bash

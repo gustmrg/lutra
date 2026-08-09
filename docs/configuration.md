@@ -91,6 +91,42 @@ inventory:
 
 Omit `collectors` to run all collectors. Missing tools and collector failures are recorded in the snapshot without failing database or file backups. Docker environment names are recorded but values are omitted, and cron commands are omitted to avoid capturing credentials.
 
+## Environment Recovery
+
+Environment recovery selects existing file and volume targets and captures
+them as one coherent, versioned set:
+
+```yaml
+environment:
+  enabled: true
+  acknowledge_plaintext: true
+  schedule: "Sun *-*-* 01:00:00"
+  targets: [app-config, app-uploads]
+  exclude: ["*.token"]
+  systemd_units: [nginx.service, myapp.service]
+  docker_containers: [myapp]
+  retention:
+    max_count: 4
+    max_age_days: 90
+    mode: both
+    keep_at_least: 1
+```
+
+`enabled: true` requires `acknowledge_plaintext: true` and at least one target.
+Targets must resolve to configured `files` or `volumes`; database targets are
+restored through the database workflow. Environment exclusions are combined
+with each file target's exclusions. `.env`, `.env.*`, private-key formats,
+`.ssh`, `credentials*`, and `secrets*` are always excluded and cannot be
+overridden. These patterns are risk reduction, not content-based secret
+scanning. Volume contents cannot be classified, so never select a credential
+store volume.
+
+The optional unit and container lists authorize typed stop/validation/activation
+actions; they are not arbitrary commands. `--activate-services` is still
+required during restore. Environment recovery uses its own retention policy and
+the internal history target `@environment`. Its timer is installed as
+`lutra-environment-backup` by `lutra schedule install`.
+
 ## Encryption
 
 Backups can be encrypted after compression with [age](https://age-encryption.org). Store only the public recipient in Lutra configuration; keep the private identity key off the VPS:

@@ -101,7 +101,7 @@ public sealed class EnvironmentRestoreCommand : AsyncCommand<EnvironmentRestoreS
         foreach (var action in plan.Actions)
             AnsiConsole.MarkupLine(
                 $"  {action.Order + 1}. {action.GetType().Name.Replace("Environment", "", StringComparison.Ordinal).Replace("RestoreAction", "", StringComparison.Ordinal)} " +
-                $"{action.Destination.EscapeMarkup()} [{action.State.ToString().ToLowerInvariant()}]");
+                $"{action.Destination.EscapeMarkup()} [blue]{action.State.ToString().ToLowerInvariant()}[/]");
         foreach (var warning in plan.Warnings)
             AnsiConsole.MarkupLine($"  [yellow]Warning:[/] {warning.EscapeMarkup()}");
         if (plan.MissingTools.Count > 0)

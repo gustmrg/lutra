@@ -2,7 +2,7 @@
 
 **Automated database and configuration backups for a Docker-based VPS.**
 
-Lutra is a Linux CLI that runs native database dump tools inside Docker containers, archives selected files and volumes, and manages checksums, manifests, retention, restore verification, optional encryption, and offsite copies. It is distributed as a self-contained binary, so no .NET runtime is required on the server.
+Lutra is a Linux CLI that runs native database dump tools inside Docker containers, archives selected files and volumes, and manages checksums, manifests, retention, restore verification, optional encryption, and offsite copies. It can also create a coherent, versioned environment recovery set for reconstructing selected VPS configuration and persistent non-database data. It is distributed as a self-contained binary, so no .NET runtime is required on the server.
 
 > Lutra is in early development. Core backup, restore, and restore verification functionality is implemented.
 
@@ -61,7 +61,7 @@ lutra backup run
 sudo lutra schedule install
 ```
 
-See [Commands](docs/commands.md) for the complete CLI reference and [Operations](docs/operations.md) for restore, verification, retention, bundles, and offsite copies.
+See [Commands](docs/commands.md) for the complete CLI reference and [Operations](docs/operations.md) for restore, verification, environment recovery, retention, bundles, and offsite copies.
 
 ## Documentation
 
@@ -75,6 +75,7 @@ See [Commands](docs/commands.md) for the complete CLI reference and [Operations]
 ## Requirements
 
 - Linux (Ubuntu 22.04+ or Debian 12+)
+- ICU, `tar`, and `gzip` from the operating-system packages
 - Docker 20.10+ for database or volume targets
 - Database dump tools installed in the relevant containers
 

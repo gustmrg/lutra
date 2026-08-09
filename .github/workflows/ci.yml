@@ -95,6 +95,29 @@ jobs:
           dotnet "$lutra_cli" cleanup --dry-run --config "$RUNNER_TEMP/lutra.yaml"
           dotnet "$lutra_cli" health --config "$RUNNER_TEMP/lutra.yaml"
 
+  environment-recovery:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+      - name: Run clean-environment reconstruction drill
+        env:
+          LUTRA_E2E_VOLUME: '1'
+          LUTRA_E2E_WORK: ${{ runner.temp }}/lutra-environment-e2e
+        run: bash tests/e2e/environment-recovery.sh
+      - name: Upload sanitized recovery drill logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: environment-recovery-logs
+          path: |
+            ${{ runner.temp }}/lutra-environment-e2e/*.out
+            ${{ runner.temp }}/lutra-environment-e2e/state/logs/environment/*.jsonl
+          if-no-files-found: ignore
+          retention-days: 7
+
   release-artifacts:
     runs-on: ubuntu-latest
     strategy:

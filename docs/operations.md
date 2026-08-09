@@ -25,6 +25,10 @@ Supported database providers are:
 │   ├── example-db_2026-02-08_030000_a1b2c3d4e5f6.dump.gz
 │   ├── example-db_2026-02-08_030000_a1b2c3d4e5f6.dump.gz.sha256
 │   └── example-db_2026-02-08_030000_a1b2c3d4e5f6.dump.gz.json
+├── environment/
+│   ├── environment_2026-02-08_010000_a1b2c3d4e5f6.tar.gz
+│   ├── environment_2026-02-08_010000_a1b2c3d4e5f6.tar.gz.sha256
+│   └── environment_2026-02-08_010000_a1b2c3d4e5f6.tar.gz.json
 └── app-mongo/
     └── app-mongo_2026-02-02_040000_a1b2c3d4e5f6.archive.gz
 ```
@@ -99,6 +103,83 @@ Set `verify_schedule` on a database target and run `sudo lutra schedule install`
 - MongoDB oplog: set `mongo_oplog: true` for a replica-set-wide archive restored with `--oplogReplay`. Namespace-remapped test restores are rejected; verify these in a disposable replica set. Sharded clusters require MongoDB's coordinated backup tooling.
 
 `config validate --preflight` reports installed dump-tool versions. Scheduled disposable restore drills are the strongest practical cross-version compatibility check.
+
+## Environment Reconstruction
+
+An environment recovery set is one plaintext, checksummed snapshot of selected
+file and Docker-volume targets plus typed host inventory. It is not a VM image
+or Infrastructure as Code: it does not provision the host, install inventoried
+packages, recreate users or SSH access, mutate firewall rules, restore
+databases, or export `lutra.db`. Known secret-bearing file paths are excluded;
+selected volume contents remain operator-reviewed plaintext.
+
+Format version 1 is independently inspectable with standard tools:
+
+```text
+manifest.json
+inventory/inventory.json
+inventory/inventory.md
+payload/files/<target>.tar.gz
+payload/volumes/<target>.tar.gz
+reports/backup.json
+MISSING_SECRETS.md
+RESTORE.md
+```
+
+Keep the `.tar.gz`, `.sha256`, and `.json` descriptor together. Verify the
+outer checksum before extraction, then verify payload checksums from
+`manifest.json`. Each payload is a standard tar archive. Lutra rejects unknown
+format versions, malformed members, unsafe paths, links, devices, collisions,
+and payload checksum failures before changing a destination.
+
+### Clean-host runbook
+
+1. Provision a supported Ubuntu or Debian host and restore administrative/SSH
+   access outside Lutra. Install the release binary plus ICU, `tar`, and `gzip`;
+   install Docker only for volume targets and NGINX/systemd tools when those
+   configurations must be validated.
+2. Create a minimal `lutra.yaml` with private, separate `backup_directory` and
+   `state_directory` paths. Copy the complete recovery triple into restricted
+   local storage and set the directory to `0700` and files to `0600`.
+3. Run `lutra environment inspect <artifact>`, review `MISSING_SECRETS.md`, the
+   inventory, required tools, sources, and declared services. A valid SHA-256
+   proves transport integrity only; confirm the artifact's provenance through
+   the restricted transfer channel.
+4. Run `lutra environment restore <artifact> --root <staging-root>` without
+   `--apply`. Review every destination, required space/tool failure, warning,
+   and volume/service action. Applying under a staging root is the safest
+   rehearsal.
+5. Apply file content with `--apply`. Existing changed files receive rollback
+   copies by default. Restore databases separately with `lutra restore` and
+   restore excluded secrets from the external secret service before starting
+   applications.
+6. If selected volumes are present, stop and identify every consumer, then
+   explicitly add `--include-volumes`; volume replacement is destructive.
+7. Validate the reconstructed NGINX and systemd configuration. On the real
+   disposable host, use `--activate-services` only after validation and secret
+   restoration. This enables/starts only units and containers declared in the
+   manifest. Verify application health and persistent data afterward.
+8. Run the same restore again. File content should report `unchanged`; an empty
+   rollback directory or best-effort metadata warning does not mean content
+   diverged.
+
+Format version 1 preserves file mode and modification time but does not encode
+owner/group metadata. Platform timestamp precision, Docker volume replacement,
+and service runtime state are documented idempotency exceptions. Services stay
+stopped unless activation is explicitly requested. Every run writes sanitized
+JSONL evidence under `<state_directory>/logs/environment/`; failed applies may
+also produce a resume report.
+
+Environment artifacts are created as `0600` files in a `0700` directory and
+retention operates on complete artifact/checksum/descriptor triples. Built-in
+sync deliberately excludes this plaintext directory. Copy it offsite only as
+an explicit operation to restricted storage, preserving its access controls.
+
+`lutra bundle` is different: it gathers the latest independent database and
+target artifacts with general instructions and may be age-encrypted. An
+environment set captures selected configuration and non-database data
+coherently and supports guarded reconstruction. Neither replaces the database
+restore workflow.
 
 ## Disaster Recovery Bundles
 

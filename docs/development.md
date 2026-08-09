@@ -31,7 +31,24 @@ Run the automated tests with:
 dotnet test Lutra.slnx
 ```
 
-CI runs unit tests, a Linux-only multi-process CLI concurrency test, CLI smoke tests including legacy-history migration, and validates self-contained `linux-x64` and `linux-arm64` release archive layouts. Each release archive must contain only the `lutra` executable; the SQLite native provider is embedded. Docker-based restore tests are opt-in/manual because they require disposable database containers.
+CI runs unit tests, a Linux-only multi-process CLI concurrency test, CLI smoke tests including legacy-history migration, the clean-environment reconstruction drill, and validates self-contained `linux-x64` and `linux-arm64` release archive layouts. Each release archive must contain only the `lutra` executable; the SQLite native provider is embedded. Database restore integrations remain opt-in/manual because they require disposable provider containers.
+
+Run the environment drill with:
+
+```bash
+bash tests/e2e/environment-recovery.sh
+LUTRA_E2E_VOLUME=1 bash tests/e2e/environment-recovery.sh
+```
+
+On Linux it publishes the current CLI and runs against a disposable filesystem.
+On macOS it executes the non-volume path in a clean Ubuntu 24.04 container. CI
+enables the destructive-volume case on an ephemeral Docker volume. The drill
+uses only public CLI commands, independently opens the recovery archive, checks
+secret and local-state exclusions, validates restored file contents/modes plus
+NGINX/systemd configuration, and proves that a second apply converges. It does
+not claim that a container validates real systemd activation; perform the
+privileged activation steps from the operations runbook on a disposable VM or
+host before a release that changes activation behavior.
 
 ## Project Structure
 
@@ -40,7 +57,7 @@ Lutra/
 ├── src/
 │   ├── Lutra.CLI/       # Entry point and Spectre.Console commands
 │   └── Lutra.Core/      # Backup, restore, config, history, and integrations
-├── tests/                # Automated tests
+├── tests/                # Unit tests and clean-environment drills
 ├── setup.sh              # Binary installation and initial configuration
 ├── lutra.example.yaml    # Annotated configuration example
 ├── .env.example          # Environment file example

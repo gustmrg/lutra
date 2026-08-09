@@ -32,8 +32,8 @@
 |---|---|---|---|
 | 1 | Recovery-set contract, configuration, and safe archive primitives | Done | Approved 2026-08-05 |
 | 2 | Backup orchestration, inventory, retention, scheduling, and logs | Done | Approved 2026-08-05 |
-| 3 | Guarded, idempotent restore and post-restore validation | Done | Pending |
-| 4 | Clean-environment reconstruction drill, documentation, and release verification | TODO | - |
+| 3 | Guarded, idempotent restore and post-restore validation | Done | Approved 2026-08-08 |
+| 4 | Clean-environment reconstruction drill, documentation, and release verification | In Progress | - |
 
 ## Outcome
 
@@ -426,6 +426,30 @@ incomplete sets cannot modify the destination, volumes, or service state.
 to prepare a clean supported host, verify and restore a recovery set,
 validate operational configuration and persistent non-database data, and rerun
 the process without unintended changes.
+
+**Phase 4 verification (2026-08-08, in progress)**:
+
+- `tests/e2e/environment-recovery.sh` passes in a clean Ubuntu 24.04 container.
+  The public CLI creates, independently inspects, preflights, applies, and
+  reapplies a recovery set as an unprivileged user; the second apply reports all
+  file actions unchanged.
+- The drill validates NGINX and systemd configuration, file contents/modes,
+  non-database persistent data, `0700`/`0600` storage, outer and nested archive
+  structure, and absence of the secret sentinel and Lutra's SQLite state.
+- The opt-in Docker case passes against a uniquely named disposable volume: it
+  captures original content, mutates it, restores with `--include-volumes`, and
+  verifies the original content before removing the volume.
+- `dotnet test Lutra.slnx --configuration Release` passes on Linux: 121 passed,
+  0 failed. The package audit reports no vulnerable packages. Linux x64 and
+  arm64 self-contained single-file publishes pass with no standalone
+  `libe_sqlite3.so`.
+- CLI smoke coverage exposed and corrected invalid Spectre markup in recovery
+  plan action rendering. `bash -n setup.sh tests/e2e/environment-recovery.sh`,
+  state-boundary search, and `git diff --check` pass.
+- Real systemd activation on a privileged disposable VM/host remains unproven.
+  Containerized validation covers unit syntax and the existing host-adapter
+  tests cover activation ordering, but the documented manual activation gate
+  must be run before marking this phase `Done`.
 
 ## Verification matrix
 

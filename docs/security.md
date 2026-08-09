@@ -15,5 +15,12 @@
 - Treat the application database as potentially sensitive operational metadata. Restrict its directory to the Lutra execution account.
 - Lutra never implicitly exports, snapshots, bundles, or syncs its live application database. Back up artifacts separately; copying a live WAL database family is not a supported state backup.
 - Discord delivery errors are sanitized so logs do not contain webhook URLs or response bodies. Continue to restrict access to Lutra configuration and service logs.
+- Environment recovery sets are plaintext. Mandatory filename exclusions reduce accidental capture but are not a secret scanner; restore excluded values from an external secret service.
+- Keep environment recovery directories mode `700` and their artifact, checksum, and descriptor files mode `600`. A SHA-256 checksum detects transport corruption but does not authenticate who produced the set.
+- Built-in sync excludes environment recovery sets. If you transfer one manually, use restricted storage and preserve access controls; selected Docker volumes may contain values that Lutra cannot classify.
+- Environment restore never executes scripts from an artifact. Volume replacement and declared service activation require separate explicit options; review the dry-run plan first and keep rollback data until validation succeeds.
 
-See [Configuration](configuration.md#encryption) for age encryption and [Operations](operations.md#offsite-copies) for offsite-copy recommendations.
+See [Configuration](configuration.md#encryption) for age encryption,
+[Environment Reconstruction](operations.md#environment-reconstruction) for the
+recovery trust model and runbook, and [Offsite Copies](operations.md#offsite-copies)
+for offsite-copy recommendations.

@@ -1,0 +1,11 @@
+[Unit]
+Description=Lutra environment recovery fixture
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/true
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
