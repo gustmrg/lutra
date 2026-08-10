@@ -5,6 +5,15 @@ namespace Lutra.Core.Tests;
 public sealed class ConfigFileHelperTests
 {
     [Fact]
+    public void ResolvePaths_DefaultsToSystemInstallation()
+    {
+        var (configPath, envPath) = ConfigFileHelper.ResolvePaths(null, null);
+
+        Assert.Equal("/etc/lutra/lutra.yaml", configPath);
+        Assert.Equal("/etc/lutra/.env", envPath);
+    }
+
+    [Fact]
     public void ResolvePaths_UsesEnvironmentFileBesideExplicitConfiguration()
     {
         var (configPath, envPath) = ConfigFileHelper.ResolvePaths(

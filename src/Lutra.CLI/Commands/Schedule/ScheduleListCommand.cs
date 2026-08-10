@@ -38,6 +38,7 @@ public sealed class ScheduleListCommand : AsyncCommand<CommandSettings>
 
         var table = new Table();
         table.AddColumn("Unit");
+        table.AddColumn("Runs as");
         table.AddColumn("Schedule");
         table.AddColumn("Enabled");
         table.AddColumn("Active");
@@ -54,6 +55,7 @@ public sealed class ScheduleListCommand : AsyncCommand<CommandSettings>
             };
 
             var schedule = ParseOnCalendar(timerFile);
+            var serviceUser = ParseServiceUser(Path.ChangeExtension(timerFile, ".service"));
             var enabled = await RunSystemctlCapture("is-enabled", $"{fileName}.timer");
             var active = await RunSystemctlCapture("is-active", $"{fileName}.timer");
 
@@ -65,7 +67,15 @@ public sealed class ScheduleListCommand : AsyncCommand<CommandSettings>
                 ? "[green]active[/]"
                 : "[grey]inactive[/]";
 
-            table.AddRow(targetName.EscapeMarkup(), schedule.EscapeMarkup(), enabledMarkup, activeMarkup);
+            var serviceUserMarkup = serviceUser == "root (implicit)"
+                ? "[red]root (implicit)[/]"
+                : serviceUser.EscapeMarkup();
+            table.AddRow(
+                targetName.EscapeMarkup(),
+                serviceUserMarkup,
+                schedule.EscapeMarkup(),
+                enabledMarkup,
+                activeMarkup);
         }
 
         AnsiConsole.Write(table);
@@ -88,6 +98,24 @@ public sealed class ScheduleListCommand : AsyncCommand<CommandSettings>
         }
 
         return "unknown";
+    }
+
+    private static string ParseServiceUser(string serviceFilePath)
+    {
+        try
+        {
+            foreach (var line in File.ReadLines(serviceFilePath))
+            {
+                if (line.StartsWith("User=", StringComparison.Ordinal))
+                    return line["User=".Length..].Trim();
+            }
+        }
+        catch
+        {
+            return "unknown";
+        }
+
+        return "root (implicit)";
     }
 
     private static async Task<string> RunSystemctlCapture(params string[] args)

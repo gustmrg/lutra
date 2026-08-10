@@ -20,17 +20,11 @@ public sealed class ConfigurationTests
     }
 
     [Fact]
-    public void NewUserStateDirectory_UsesAbsoluteXdgOrHomeFallback()
+    public void NewConfiguration_UsesSystemStateDirectory()
     {
-        Assert.Equal(
-            "/srv/user-state/lutra",
-            ConfigTemplates.ResolveDefaultStateDirectory(false, "/srv/user-state", "/home/lutra"));
-        Assert.Equal(
-            "/home/lutra/.local/state/lutra",
-            ConfigTemplates.ResolveDefaultStateDirectory(false, "relative/state", "/home/lutra"));
-        Assert.Equal(
-            "/var/lib/lutra",
-            ConfigTemplates.ResolveDefaultStateDirectory(true, "/ignored", "/ignored"));
+        Assert.Equal("/etc/lutra", ConfigTemplates.GetDefaultConfigDirectory());
+        Assert.Equal("/var/backups/lutra", ConfigTemplates.GetDefaultBackupDirectory());
+        Assert.Equal("/var/lib/lutra", ConfigTemplates.GetDefaultStateDirectory());
     }
 
     [Fact]

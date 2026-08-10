@@ -6,51 +6,25 @@ namespace Lutra.Core.Configuration;
 public static class ConfigTemplates
 {
     /// <summary>
-    /// Returns the default backup directory based on whether the process is running as root.
+    /// Returns the system-wide backup directory.
     /// </summary>
     public static string GetDefaultBackupDirectory()
     {
-        return Environment.IsPrivilegedProcess
-            ? "/var/backups/lutra"
-            : Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-                "backups", "lutra");
+        return "/var/backups/lutra";
     }
 
     /// <summary>
-    /// Returns the default config directory based on whether the process is running as root.
+    /// Returns the system-wide configuration directory.
     /// </summary>
     public static string GetDefaultConfigDirectory()
     {
-        return Environment.IsPrivilegedProcess
-            ? "/etc/lutra"
-            : Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                "lutra");
+        return "/etc/lutra";
     }
 
     /// <summary>Returns the state directory used by a newly generated configuration.</summary>
     public static string GetDefaultStateDirectory()
     {
-        return ResolveDefaultStateDirectory(
-            Environment.IsPrivilegedProcess,
-            Environment.GetEnvironmentVariable("XDG_STATE_HOME"),
-            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
-    }
-
-    /// <summary>Resolves a new installation's state directory from its installation context.</summary>
-    public static string ResolveDefaultStateDirectory(
-        bool isPrivilegedProcess,
-        string? xdgStateHome,
-        string userProfile)
-    {
-        if (isPrivilegedProcess)
-            return "/var/lib/lutra";
-
-        if (!string.IsNullOrWhiteSpace(xdgStateHome) && Path.IsPathFullyQualified(xdgStateHome))
-            return Path.Combine(xdgStateHome, "lutra");
-
-        return Path.Combine(userProfile, ".local", "state", "lutra");
+        return "/var/lib/lutra";
     }
 
     /// <summary>

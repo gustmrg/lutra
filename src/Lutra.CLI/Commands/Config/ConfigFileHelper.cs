@@ -30,50 +30,7 @@ public static class ConfigFileHelper
         if (!string.IsNullOrWhiteSpace(configPath))
             return configPath;
 
-        var userConfigPath = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-            ".config", "lutra", "lutra.yaml");
-
-        if (Environment.IsPrivilegedProcess)
-        {
-            var sudoConfigDir = GetSudoUserConfigDirectory();
-            if (File.Exists(DefaultSystemConfigPath))
-                return DefaultSystemConfigPath;
-
-            var sudoConfigPath = sudoConfigDir is null
-                ? null
-                : Path.Combine(sudoConfigDir, "lutra.yaml");
-            return sudoConfigPath is not null && File.Exists(sudoConfigPath)
-                ? sudoConfigPath
-                : DefaultSystemConfigPath;
-        }
-
-        return File.Exists(userConfigPath) || !File.Exists(DefaultSystemConfigPath)
-            ? userConfigPath
-            : DefaultSystemConfigPath;
-    }
-
-    /// <summary>
-    /// When running under sudo, resolves the original user's config directory
-    /// by reading SUDO_USER and looking up their home in /etc/passwd.
-    /// </summary>
-    private static string? GetSudoUserConfigDirectory()
-    {
-        var sudoUser = Environment.GetEnvironmentVariable("SUDO_USER");
-        if (string.IsNullOrEmpty(sudoUser))
-            return null;
-
-        if (!File.Exists("/etc/passwd"))
-            return null;
-
-        foreach (var line in File.ReadLines("/etc/passwd"))
-        {
-            var fields = line.Split(':');
-            if (fields.Length >= 6 && fields[0] == sudoUser)
-                return Path.Combine(fields[5], ".config", "lutra");
-        }
-
-        return null;
+        return DefaultSystemConfigPath;
     }
 
     public static void CreateDirectoryIfNeeded(string path)

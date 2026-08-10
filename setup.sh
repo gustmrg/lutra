@@ -14,7 +14,7 @@ NC='\033[0m' # No Color
 GITHUB_REPO="gustmrg/lutra"
 FROM_RELEASE=true
 FROM_SOURCE=false
-NO_MODIFY_PATH=false
+RUN_AS_USER=""
 
 usage() {
     echo "Usage: setup.sh [OPTIONS]"
@@ -24,30 +24,42 @@ usage() {
     echo "Options:"
     echo "  --from-release     Download pre-built binary from GitHub releases (default)"
     echo "  --from-source      Build and install from the local source checkout"
-    echo "  --no-modify-path   Skip automatic PATH modification"
+    echo "  --run-as USER      Non-root account that will run Lutra (defaults to SUDO_USER)"
     echo "  -h, --help         Show this help message"
     echo ""
-    echo "Installation modes:"
-    echo "  User install:     bash setup.sh          (~/.local/bin/lutra)"
-    echo "  System install:   sudo bash setup.sh     (/usr/local/bin/lutra)"
-    echo ""
+    echo "Lutra supports system-wide installation only. Run this script with sudo."
+    echo "The binary, configuration, and systemd units are machine-wide, but services run as USER."
     echo "The default installation downloads a pre-built binary from GitHub releases."
     echo "Use --from-source only when running from a source checkout."
 }
 
-for arg in "$@"; do
-    case "$arg" in
+while [ "$#" -gt 0 ]; do
+    case "$1" in
         --from-release) FROM_RELEASE=true; FROM_SOURCE=false ;;
         --from-source) FROM_SOURCE=true; FROM_RELEASE=false ;;
-        --no-modify-path) NO_MODIFY_PATH=true ;;
+        --run-as)
+            if [ "$#" -lt 2 ]; then
+                echo "--run-as requires a user name"
+                exit 1
+            fi
+            RUN_AS_USER="$2"
+            shift
+            ;;
         -h|--help) usage; exit 0 ;;
         *)
-            echo "Unknown option: $arg"
+            echo "Unknown option: $1"
             usage
             exit 1
             ;;
     esac
+    shift
 done
+
+if [ "$EUID" -ne 0 ]; then
+    echo -e "${RED}✗ Lutra supports system-wide installation only.${NC}"
+    echo "  Re-run this setup command with sudo."
+    exit 1
+fi
 
 # PID-scoped temp directory to prevent collisions
 TMPDIR_INSTALL="/tmp/lutra_install_$$"
@@ -81,8 +93,8 @@ install_from_release() {
     echo -e "${BLUE}Latest release:${NC} $TAG ($RID)"
 
     # Skip if the same version is already installed
-    if command -v lutra &> /dev/null; then
-        INSTALLED_VERSION=$(lutra --version 2>/dev/null || echo "")
+    if [ -x "$INSTALL_DIR/lutra" ]; then
+        INSTALLED_VERSION=$("$INSTALL_DIR/lutra" --version 2>/dev/null || echo "")
         if [ -n "$INSTALLED_VERSION" ] && [[ "$INSTALLED_VERSION" == *"${TAG#v}"* ]]; then
             echo -e "${GREEN}✓ Lutra $TAG is already installed — skipping download${NC}"
             return 0
@@ -122,109 +134,43 @@ install_from_release() {
     echo -e "${GREEN}✓ Installed to $INSTALL_DIR/lutra${NC}"
 }
 
-# Detect user's shell and add INSTALL_DIR to PATH in the appropriate config file
-modify_shell_path() {
-    local install_dir="$1"
-    local shell_name
-    shell_name=$(basename "${SHELL:-/bin/bash}")
-
-    local config_file=""
-    local path_line=""
-
-    case "$shell_name" in
-        bash)
-            config_file="$HOME/.bashrc"
-            path_line="export PATH=\"$install_dir:\$PATH\""
-            ;;
-        zsh)
-            config_file="$HOME/.zshrc"
-            path_line="export PATH=\"$install_dir:\$PATH\""
-            ;;
-        fish)
-            config_file="${XDG_CONFIG_HOME:-$HOME/.config}/fish/config.fish"
-            path_line="fish_add_path $install_dir"
-            ;;
-        *)
-            echo -e "${YELLOW}⚠ Unsupported shell for automatic PATH setup: $shell_name${NC}"
-            echo "  Add $install_dir to your PATH manually."
-            echo ""
-            return 0
-            ;;
-    esac
-
-    # Deduplication: skip if already present
-    if [ -f "$config_file" ] && grep -qF "$install_dir" "$config_file"; then
-        echo -e "${BLUE}ℹ $config_file already contains $install_dir${NC}"
-        echo ""
-        return 0
-    fi
-
-    echo -e "${YELLOW}⚠ $install_dir is not in your PATH${NC}"
-    echo ""
-
-    if [ "$NO_MODIFY_PATH" = true ]; then
-        echo "  Add this to your $config_file:"
-        echo -e "  ${BLUE}${path_line}${NC}"
-        echo ""
-        return 0
-    fi
-
-    read -p "  Add $install_dir to PATH in $config_file? [Y/n] " REPLY
-    REPLY="${REPLY:-Y}"
-
-    if [[ "$REPLY" =~ ^[Yy]$ ]]; then
-        echo "" >> "$config_file"
-        echo "# Added by Lutra setup" >> "$config_file"
-        echo "$path_line" >> "$config_file"
-        echo -e "  ${GREEN}✓ Updated $config_file${NC}"
-        echo -e "  Run ${BLUE}source $config_file${NC} or restart your shell to apply."
-    else
-        echo "  Add this to your $config_file:"
-        echo -e "  ${BLUE}${path_line}${NC}"
-    fi
-    echo ""
-}
-
 echo -e "${BOLD}🦦 Lutra Setup${NC}"
 echo ""
 
-# Check if running as root
-if [ "$EUID" -eq 0 ]; then
-    INSTALL_DIR="/usr/local/bin"
-    CONFIG_DIR="/etc/lutra"
-    BACKUP_DIR="/var/backups/lutra"
-    STATE_DIR="/var/lib/lutra"
-    INSTALL_USER=$(logname 2>/dev/null || echo "${SUDO_USER:-root}")
-else
-    INSTALL_DIR="$HOME/.local/bin"
-    CONFIG_DIR="$HOME/.config/lutra"
-    BACKUP_DIR="$HOME/backups/lutra"
-    case "${XDG_STATE_HOME:-}" in
-        /*) STATE_DIR="$XDG_STATE_HOME/lutra" ;;
-        *) STATE_DIR="$HOME/.local/state/lutra" ;;
-    esac
-    INSTALL_USER="$USER"
+INSTALL_DIR="/usr/local/bin"
+CONFIG_DIR="/etc/lutra"
+BACKUP_DIR="/var/backups/lutra"
+STATE_DIR="/var/lib/lutra"
+
+if [ -z "$RUN_AS_USER" ]; then
+    RUN_AS_USER="${SUDO_USER:-}"
+fi
+if [ -z "$RUN_AS_USER" ] || [ "$RUN_AS_USER" = root ]; then
+    echo -e "${RED}✗ A non-root runtime user is required.${NC}"
+    echo "  Run through sudo from that account, or pass --run-as USER."
+    exit 1
+fi
+if ! id "$RUN_AS_USER" >/dev/null 2>&1; then
+    echo -e "${RED}✗ Runtime user does not exist: $RUN_AS_USER${NC}"
+    exit 1
+fi
+RUN_AS_GROUP=$(id -gn "$RUN_AS_USER")
+RUN_AS_HOME=$(getent passwd "$RUN_AS_USER" | cut -d: -f6)
+if [ -z "$RUN_AS_HOME" ] || [[ "$RUN_AS_HOME" != /* ]]; then
+    echo -e "${RED}✗ Runtime user does not have an absolute home directory: $RUN_AS_USER${NC}"
+    exit 1
 fi
 
 detect_alternate_installation() {
     ALTERNATE_BINARY=""
-    ALTERNATE_LOCATION=""
 
-    if [ "$EUID" -eq 0 ]; then
-        if [ -n "$INSTALL_USER" ] && [ "$INSTALL_USER" != "root" ]; then
-            USER_HOME=$(eval echo ~"$INSTALL_USER")
-            ALTERNATE_BINARY="$USER_HOME/.local/bin/lutra"
-            ALTERNATE_LOCATION="user installation ($USER_HOME/.local/bin)"
-        fi
-    else
-        ALTERNATE_BINARY="/usr/local/bin/lutra"
-        ALTERNATE_LOCATION="system-wide installation (/usr/local/bin)"
-    fi
+    ALTERNATE_BINARY="$RUN_AS_HOME/.local/bin/lutra"
 
     [ -n "$ALTERNATE_BINARY" ] && [ -f "$ALTERNATE_BINARY" ]
 }
 
-echo -e "${BLUE}Installation type:${NC} $([ "$EUID" -eq 0 ] && echo "System-wide (requires sudo)" || echo "User-only")"
+echo -e "${BLUE}Installation type:${NC} System-wide"
+echo -e "${BLUE}Runtime user:${NC} $RUN_AS_USER"
 echo -e "${BLUE}Binary location:${NC} $INSTALL_DIR/lutra"
 echo -e "${BLUE}Config directory:${NC} $CONFIG_DIR"
 echo -e "${BLUE}Backup directory:${NC} $BACKUP_DIR"
@@ -242,36 +188,22 @@ if detect_alternate_installation; then
     echo ""
     echo "  Choose an option:"
     echo "    [1] Remove old installation and continue (recommended)"
-    echo "    [2] Abort (re-run with$([ "$EUID" -eq 0 ] && echo "out" || echo "") sudo to update existing installation)"
-    echo "    [3] Continue anyway"
+    echo "    [2] Abort and remove it manually"
     echo ""
-    read -p "  Enter choice [1-3]: " CHOICE
+    read -p "  Enter choice [1-2]: " CHOICE
 
     case "$CHOICE" in
         1)
-            if [ "$EUID" -eq 0 ]; then
-                rm -f "$ALTERNATE_BINARY"
-            else
-                sudo rm -f "$ALTERNATE_BINARY"
-            fi
+            rm -f "$ALTERNATE_BINARY"
             echo -e "  ${GREEN}✓ Removed $ALTERNATE_BINARY${NC}"
             echo ""
             ;;
         2)
             echo ""
-            if [ "$EUID" -eq 0 ]; then
-                echo -e "  To update the existing $ALTERNATE_LOCATION, re-run ${BOLD}without${NC} sudo:"
-                echo -e "    ${BLUE}bash setup.sh${NC}"
-            else
-                echo -e "  To update the existing $ALTERNATE_LOCATION, re-run ${BOLD}with${NC} sudo:"
-                echo -e "    ${BLUE}sudo bash setup.sh${NC}"
-            fi
+            echo "  User installations are no longer supported."
+            echo -e "  Re-run this system installer and choose option 1 to remove the old binary."
             echo ""
             exit 0
-            ;;
-        3)
-            echo -e "  ${YELLOW}Continuing with dual installation...${NC}"
-            echo ""
             ;;
         *)
             echo -e "  ${RED}Invalid choice. Aborting.${NC}"
@@ -294,10 +226,10 @@ else
     echo -e "${GREEN}✓ Docker found${NC}"
 fi
 
-# Check if user can run docker
-if [ "$DOCKER_AVAILABLE" = true ] && ! docker ps &> /dev/null; then
-    echo -e "${YELLOW}⚠ Cannot run Docker commands${NC}"
-    echo "  Add user to docker group: sudo usermod -aG docker $USER"
+# Check if the runtime user can run Docker
+if [ "$DOCKER_AVAILABLE" = true ] && ! runuser -u "$RUN_AS_USER" -- docker ps &> /dev/null; then
+    echo -e "${YELLOW}⚠ Runtime user cannot run Docker commands${NC}"
+    echo "  Add user to docker group: sudo usermod -aG docker $RUN_AS_USER"
     echo "  Then log out and back in."
 fi
 
@@ -315,20 +247,10 @@ echo ""
 # Create directories
 echo -e "${BOLD}Creating directories...${NC}"
 
-if [ "$EUID" -eq 0 ]; then
-    mkdir -p "$INSTALL_DIR"
-    mkdir -p "$CONFIG_DIR"
-    mkdir -p "$BACKUP_DIR"
-    mkdir -p "$STATE_DIR"
-    chown -R "$INSTALL_USER:$INSTALL_USER" "$CONFIG_DIR"
-    chown -R "$INSTALL_USER:$INSTALL_USER" "$BACKUP_DIR"
-    chown -R "$INSTALL_USER:$INSTALL_USER" "$STATE_DIR"
-else
-    mkdir -p "$INSTALL_DIR"
-    mkdir -p "$CONFIG_DIR"
-    mkdir -p "$BACKUP_DIR"
-    mkdir -p "$STATE_DIR"
-fi
+mkdir -p "$INSTALL_DIR"
+mkdir -p "$CONFIG_DIR"
+mkdir -p "$BACKUP_DIR"
+mkdir -p "$STATE_DIR"
 
 echo -e "${GREEN}✓ Directories created${NC}"
 echo ""
@@ -353,8 +275,8 @@ else
     SKIP_BUILD=false
     CSPROJ_VERSION=$(grep '<Version>' src/Lutra.CLI/Lutra.CLI.csproj 2>/dev/null \
         | sed 's/.*<Version>\(.*\)<\/Version>.*/\1/' || echo "")
-    if [ -n "$CSPROJ_VERSION" ] && command -v lutra &> /dev/null; then
-        INSTALLED_VERSION=$(lutra --version 2>/dev/null || echo "")
+    if [ -n "$CSPROJ_VERSION" ] && [ -x "$INSTALL_DIR/lutra" ]; then
+        INSTALLED_VERSION=$("$INSTALL_DIR/lutra" --version 2>/dev/null || echo "")
         if [ -n "$INSTALLED_VERSION" ] && [[ "$INSTALLED_VERSION" == *"$CSPROJ_VERSION"* ]]; then
             echo -e "${GREEN}✓ Lutra $CSPROJ_VERSION is already installed — skipping build${NC}"
             SKIP_BUILD=true
@@ -382,6 +304,8 @@ else
         echo -e "${GREEN}✓ Installed to $INSTALL_DIR/lutra${NC}"
     fi
 fi
+chown root:root "$INSTALL_DIR/lutra"
+chmod 0755 "$INSTALL_DIR/lutra"
 echo ""
 
 # Create template configuration
@@ -482,17 +406,15 @@ fi
 
 echo ""
 
-# Add to PATH if needed (user install only)
-if [ "$EUID" -ne 0 ]; then
-    if [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then
-        modify_shell_path "$INSTALL_DIR"
-    fi
-fi
+# Make the runtime identity consistent for configuration, artifacts, and SQLite state.
+chmod 600 "$CONFIG_DIR/.env"
+chown -R "$RUN_AS_USER:$RUN_AS_GROUP" "$CONFIG_DIR" "$BACKUP_DIR" "$STATE_DIR"
 
 # Success summary
 echo -e "${BOLD}${GREEN}✓ Installation complete!${NC}"
 echo ""
 echo -e "${BOLD}Next steps:${NC}"
+echo -e "Run Lutra commands as ${BOLD}$RUN_AS_USER${NC}; use sudo only for installation and systemd management."
 echo ""
 
 STEP=1
@@ -525,13 +447,9 @@ echo -e "   ${BLUE}lutra backup run --config $CONFIG_DIR/lutra.yaml --env-file $
 echo ""
 STEP=$((STEP + 1))
 echo -e "${STEP}. ${BOLD}Set up automated backups (optional):${NC}"
-if [ "$EUID" -eq 0 ]; then
-    echo -e "   ${BLUE}lutra schedule install --config $CONFIG_DIR/lutra.yaml --env-file $CONFIG_DIR/.env${NC}"
-    echo -e "   ${BLUE}systemctl daemon-reload${NC}"
-    echo -e "   ${BLUE}systemctl enable --now lutra-backup-*.timer${NC}"
-else
-    echo -e "   ${BLUE}sudo lutra schedule install --config $CONFIG_DIR/lutra.yaml --env-file $CONFIG_DIR/.env${NC}"
-fi
+echo -e "   ${BLUE}sudo lutra schedule install --run-as $RUN_AS_USER --config $CONFIG_DIR/lutra.yaml --env-file $CONFIG_DIR/.env${NC}"
+echo -e "   ${BLUE}sudo systemctl daemon-reload${NC}"
+echo -e "   ${BLUE}sudo systemctl enable --now lutra-backup-*.timer${NC}"
 echo ""
 echo -e "${BOLD}Documentation:${NC} https://github.com/gustmrg/lutra"
 echo ""

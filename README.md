@@ -19,36 +19,27 @@ Lutra is a Linux CLI that runs native database dump tools inside Docker containe
 
 ### 1. Install the latest binary
 
-The recommended installation downloads the setup script and executes it in release-binary mode. It automatically selects `linux-x64` or `linux-arm64`, verifies the SHA-256 checksum, installs Lutra, and creates configuration templates.
-
-For a VPS that should run scheduled backups, choose a system-wide installation. Choose a user-only installation when you do not have root access or are evaluating Lutra. Both modes use the same binary and features; only the installation paths and required permissions differ.
-
-For a system-wide installation:
+The setup script installs Lutra system-wide, automatically selects `linux-x64` or `linux-arm64`, verifies the SHA-256 checksum, and creates configuration templates. Run it through `sudo` from the non-root account that should operate Lutra; setup assigns writable data to that account.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/gustmrg/lutra/main/setup.sh | sudo bash -s
 ```
 
-For a user-only installation, omit `sudo`:
+When installing from a root shell or automation, select the non-root runtime account explicitly:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/gustmrg/lutra/main/setup.sh | bash -s
+curl -fsSL https://raw.githubusercontent.com/gustmrg/lutra/main/setup.sh | sudo bash -s -- --run-as gustavo
 ```
 
-The setup script creates `/etc/lutra`, `/var/backups/lutra`, and `/var/lib/lutra` for system installs. User installs use `~/.config/lutra`, `~/backups/lutra`, and `$XDG_STATE_HOME/lutra` (or `~/.local/state/lutra`). See [Installation](docs/installation.md) for prerequisites, ownership, updating, and uninstall preservation flags.
+The root-owned binary is installed at `/usr/local/bin/lutra`. Configuration uses `/etc/lutra`; backups and application state use `/var/backups/lutra` and `/var/lib/lutra`, owned by the selected runtime account. See [Installation](docs/installation.md) for ownership, updating, scheduling, and uninstall preservation flags.
 
 ### 2. Configure targets and credentials
 
 Edit `lutra.yaml` to describe your containers and targets. Put passwords in `.env`, not in the YAML file.
 
 ```bash
-# System-wide installation
-sudo nano /etc/lutra/lutra.yaml
-sudo nano /etc/lutra/.env
-
-# User-only installation
-nano ~/.config/lutra/lutra.yaml
-nano ~/.config/lutra/.env
+nano /etc/lutra/lutra.yaml
+nano /etc/lutra/.env
 ```
 
 Use [`lutra.example.yaml`](lutra.example.yaml) and [`.env.example`](.env.example) as starting points. The full reference is in [Configuration](docs/configuration.md).
@@ -58,7 +49,7 @@ Use [`lutra.example.yaml`](lutra.example.yaml) and [`.env.example`](.env.example
 ```bash
 lutra config validate --preflight
 lutra backup run
-sudo lutra schedule install
+sudo lutra schedule install --run-as gustavo
 ```
 
 See [Commands](docs/commands.md) for the complete CLI reference and [Operations](docs/operations.md) for restore, verification, environment recovery, retention, bundles, and offsite copies.

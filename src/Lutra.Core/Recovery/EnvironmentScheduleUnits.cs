@@ -10,7 +10,9 @@ public static class EnvironmentScheduleUnits
         string lutraPath,
         string configPath,
         string envFilePath,
-        string schedule)
+        string schedule,
+        string serviceUser,
+        string homeDirectory)
     {
         var service = $"""
             [Unit]
@@ -18,6 +20,8 @@ public static class EnvironmentScheduleUnits
 
             [Service]
             Type=oneshot
+            User={serviceUser}
+            Environment="HOME={EscapeSystemdValue(homeDirectory)}"
             ExecStart={Quote(lutraPath)} environment backup --config {Quote(configPath)} --env-file {Quote(envFilePath)}
             """;
         var timer = $"""
@@ -35,6 +39,10 @@ public static class EnvironmentScheduleUnits
     }
 
     private static string Quote(string value)
-        => "\"" + value.Replace("\\", "\\\\", StringComparison.Ordinal)
-            .Replace("\"", "\\\"", StringComparison.Ordinal) + "\"";
+        => "\"" + EscapeSystemdValue(value) + "\"";
+
+    private static string EscapeSystemdValue(string value)
+        => value.Replace("%", "%%", StringComparison.Ordinal)
+            .Replace("\\", "\\\\", StringComparison.Ordinal)
+            .Replace("\"", "\\\"", StringComparison.Ordinal);
 }

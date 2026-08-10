@@ -94,7 +94,7 @@ lutra verify --target my-postgres
 
 PostgreSQL uses a temporary `lutra_verify_<id>` database. SQL Server builds `MOVE` clauses from `RESTORE FILELISTONLY`. MongoDB remaps namespaces with `--nsFrom` and `--nsTo`, using `mongosh` or the legacy `mongo` shell. File targets are read through and their entries counted. Verification exits `0` on success and `1` on failure.
 
-Set `verify_schedule` on a database target and run `sudo lutra schedule install` to schedule restore drills.
+Set `verify_schedule` on a database target and run `sudo lutra schedule install --run-as <user>` to schedule restore drills.
 
 ## Advanced Recovery
 

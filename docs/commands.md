@@ -7,7 +7,7 @@ All commands accept these global options:
 --env-file <PATH>     Path to .env file (default: /etc/lutra/.env)
 ```
 
-User-only installations use `~/.config/lutra/lutra.yaml` and `~/.config/lutra/.env` by default.
+Lutra supports system-wide installation. Manual commands run as the selected non-root runtime account; use sudo only for installation, systemd management, and explicitly privileged restore operations.
 
 ## Backup
 
@@ -108,14 +108,14 @@ lutra config reset                           # Reset config files to template de
 ## Scheduling
 
 ```bash
-sudo lutra schedule install                  # Install timers for all targets
-sudo lutra schedule install --target my-postgres
+sudo lutra schedule install --run-as gustavo # Install timers for all targets
+sudo lutra schedule install --run-as gustavo --target my-postgres
 lutra schedule list                          # List timers and status
 sudo lutra schedule remove                   # Remove all Lutra timers
 sudo lutra schedule remove --target my-postgres
 ```
 
-Schedules use systemd calendar expressions, not cron syntax. See [Configuration](configuration.md#schedules).
+`--run-as` is required and must name an existing non-root account. All generated services use that account, including post-backup sync. Schedules use systemd calendar expressions, not cron syntax. See [Configuration](configuration.md#schedules).
 
 ## Uninstall
 

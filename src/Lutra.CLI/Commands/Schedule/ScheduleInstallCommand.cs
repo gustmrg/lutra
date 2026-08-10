@@ -8,11 +8,11 @@ using Spectre.Console.Cli;
 
 namespace Lutra.CLI.Commands.Schedule;
 
-public sealed class ScheduleInstallCommand : AsyncCommand<TargetSettings>
+public sealed class ScheduleInstallCommand : AsyncCommand<ScheduleInstallSettings>
 {
     private const string SystemdDir = "/etc/systemd/system";
 
-    public override Task<int> ExecuteAsync(CommandContext context, TargetSettings settings)
+    public override Task<int> ExecuteAsync(CommandContext context, ScheduleInstallSettings settings)
     {
         try
         {
@@ -29,6 +29,7 @@ public sealed class ScheduleInstallCommand : AsyncCommand<TargetSettings>
             }
 
             var config = ServiceFactory.LoadConfig(settings);
+            var serviceUser = SystemdServiceUser.Resolve(settings.RunAsUser);
             var lutraPath = Environment.ProcessPath ?? "lutra";
             var (resolvedConfigPath, resolvedEnvPath) = ConfigFileHelper.ResolvePaths(
                 settings.ConfigPath,
@@ -41,25 +42,26 @@ public sealed class ScheduleInstallCommand : AsyncCommand<TargetSettings>
             foreach (var target in targets)
             {
                 var unitName = $"lutra-backup-{target.Name}";
-                InstallUnit(unitName, target, lutraPath, resolvedConfigPath, resolvedEnvPath);
-                AnsiConsole.MarkupLine($"  [green]Installed[/] {unitName}.timer ({target.Schedule.EscapeMarkup()})");
+                InstallUnit(unitName, target, lutraPath, resolvedConfigPath, resolvedEnvPath, serviceUser);
+                AnsiConsole.MarkupLine(
+                    $"  [green]Installed[/] {unitName}.timer ({target.Schedule.EscapeMarkup()}, runs as {serviceUser.Name.EscapeMarkup()})");
 
                 if (target is DatabaseTarget { VerifySchedule: not null } database)
                 {
-                    InstallVerifyUnit(database, lutraPath, resolvedConfigPath, resolvedEnvPath);
+                    InstallVerifyUnit(database, lutraPath, resolvedConfigPath, resolvedEnvPath, serviceUser);
                     AnsiConsole.MarkupLine($"  [green]Installed[/] lutra-verify-{database.Name}.timer ({database.VerifySchedule!.EscapeMarkup()})");
                 }
             }
 
             if (settings.Target is null && config.Inventory is { Enabled: true } inventory)
             {
-                InstallInventoryUnit(lutraPath, resolvedConfigPath, resolvedEnvPath, inventory.Schedule);
+                InstallInventoryUnit(lutraPath, resolvedConfigPath, resolvedEnvPath, inventory.Schedule, serviceUser);
                 AnsiConsole.MarkupLine($"  [green]Installed[/] lutra-inventory.timer ({inventory.Schedule.EscapeMarkup()})");
             }
 
             if (settings.Target is null && config.Environment is { Enabled: true } environment)
             {
-                InstallEnvironmentUnit(lutraPath, resolvedConfigPath, resolvedEnvPath, environment.Schedule);
+                InstallEnvironmentUnit(lutraPath, resolvedConfigPath, resolvedEnvPath, environment.Schedule, serviceUser);
                 AnsiConsole.MarkupLine(
                     $"  [green]Installed[/] {EnvironmentScheduleUnits.UnitName}.timer ({environment.Schedule.EscapeMarkup()})");
             }
@@ -81,17 +83,18 @@ public sealed class ScheduleInstallCommand : AsyncCommand<TargetSettings>
     }
 
     private static void InstallVerifyUnit(
-        DatabaseTarget target, string lutraPath, string configPath, string envFilePath)
+        DatabaseTarget target,
+        string lutraPath,
+        string configPath,
+        string envFilePath,
+        SystemdServiceUser serviceUser)
     {
         var unitName = $"lutra-verify-{target.Name}";
-        var serviceContent = $"""
-            [Unit]
-            Description=Lutra restore drill for {target.Name}
-
-            [Service]
-            Type=oneshot
-            ExecStart={lutraPath} verify --target {target.Name} --config {configPath} --env-file {envFilePath}
-            """;
+        var serviceContent = SystemdServiceUnit.Build(
+            $"Lutra restore drill for {target.Name}",
+            serviceUser,
+            lutraPath,
+            "verify", "--target", target.Name, "--config", configPath, "--env-file", envFilePath);
         var timerContent = $"""
             [Unit]
             Description=Lutra restore drill timer for {target.Name}
@@ -107,16 +110,18 @@ public sealed class ScheduleInstallCommand : AsyncCommand<TargetSettings>
         File.WriteAllText(Path.Combine(SystemdDir, $"{unitName}.timer"), timerContent);
     }
 
-    private static void InstallInventoryUnit(string lutraPath, string configPath, string envFilePath, string schedule)
+    private static void InstallInventoryUnit(
+        string lutraPath,
+        string configPath,
+        string envFilePath,
+        string schedule,
+        SystemdServiceUser serviceUser)
     {
-        var serviceContent = $"""
-            [Unit]
-            Description=Lutra server inventory snapshot
-
-            [Service]
-            Type=oneshot
-            ExecStart={lutraPath} inventory --config {configPath} --env-file {envFilePath}
-            """;
+        var serviceContent = SystemdServiceUnit.Build(
+            "Lutra server inventory snapshot",
+            serviceUser,
+            lutraPath,
+            "inventory", "--config", configPath, "--env-file", envFilePath);
 
         var timerContent = $"""
             [Unit]
@@ -134,16 +139,19 @@ public sealed class ScheduleInstallCommand : AsyncCommand<TargetSettings>
         File.WriteAllText(Path.Combine(SystemdDir, "lutra-inventory.timer"), timerContent);
     }
 
-    private static void InstallUnit(string unitName, IBackupTarget target, string lutraPath, string configPath, string envFilePath)
+    private static void InstallUnit(
+        string unitName,
+        IBackupTarget target,
+        string lutraPath,
+        string configPath,
+        string envFilePath,
+        SystemdServiceUser serviceUser)
     {
-        var serviceContent = $"""
-            [Unit]
-            Description=Lutra backup for {target.Name}
-
-            [Service]
-            Type=oneshot
-            ExecStart={lutraPath} backup run --target {target.Name} --config {configPath} --env-file {envFilePath}
-            """;
+        var serviceContent = SystemdServiceUnit.Build(
+            $"Lutra backup for {target.Name}",
+            serviceUser,
+            lutraPath,
+            "backup", "run", "--target", target.Name, "--config", configPath, "--env-file", envFilePath);
 
         var timerContent = $"""
             [Unit]
@@ -165,9 +173,16 @@ public sealed class ScheduleInstallCommand : AsyncCommand<TargetSettings>
         string lutraPath,
         string configPath,
         string envFilePath,
-        string schedule)
+        string schedule,
+        SystemdServiceUser serviceUser)
     {
-        var content = EnvironmentScheduleUnits.Build(lutraPath, configPath, envFilePath, schedule);
+        var content = EnvironmentScheduleUnits.Build(
+            lutraPath,
+            configPath,
+            envFilePath,
+            schedule,
+            serviceUser.Name,
+            serviceUser.HomeDirectory);
         File.WriteAllText(
             Path.Combine(SystemdDir, EnvironmentScheduleUnits.UnitName + ".service"), content.Service);
         File.WriteAllText(

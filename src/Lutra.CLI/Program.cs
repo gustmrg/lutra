@@ -100,7 +100,7 @@ app.Configure(config =>
         schedule.SetDescription("Manage Lutra systemd timers for backups, restore drills, and inventory.");
 
         schedule.AddCommand<ScheduleInstallCommand>("install")
-            .WithDescription("Install systemd timer units for backups, restore drills, and inventory.");
+            .WithDescription("Install systemd timers that run as an explicit non-root user.");
 
         schedule.AddCommand<ScheduleRemoveCommand>("remove")
             .WithDescription("Remove installed Lutra systemd timer units.");
