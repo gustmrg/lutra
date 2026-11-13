@@ -1,7 +1,7 @@
-using System.Diagnostics;
 using Lutra.CLI.Infrastructure;
 using Lutra.Core.Configuration;
 using Lutra.Core.Persistence;
+using Lutra.Core.Processes;
 using Microsoft.Data.Sqlite;
 using Spectre.Console;
 using Spectre.Console.Cli;
@@ -10,6 +10,8 @@ namespace Lutra.CLI.Commands.Config;
 
 public sealed class ConfigValidateCommand : AsyncCommand<ConfigValidateSettings>
 {
+    private static readonly SystemProcessRunner Processes = new();
+
     public override async Task<int> ExecuteAsync(CommandContext context, ConfigValidateSettings settings)
     {
         try
@@ -191,59 +193,16 @@ public sealed class ConfigValidateCommand : AsyncCommand<ConfigValidateSettings>
 
     private static async Task<string?> CommandOutputAsync(string fileName, IReadOnlyList<string> args)
     {
-        try
-        {
-            var psi = new ProcessStartInfo
-            {
-                FileName = fileName,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false
-            };
-            foreach (var arg in args)
-                psi.ArgumentList.Add(arg);
-            using var process = Process.Start(psi);
-            if (process is null)
-                return null;
-            var stdout = process.StandardOutput.ReadToEndAsync();
-            var stderr = process.StandardError.ReadToEndAsync();
-            await process.WaitForExitAsync();
-            var output = await stdout;
-            if (string.IsNullOrWhiteSpace(output))
-                output = await stderr;
-            return process.ExitCode == 0 ? output.Trim() : null;
-        }
-        catch
-        {
+        var outcome = await Processes.RunAsync(new ProcessRequest(fileName, args));
+        if (!outcome.IsSuccess)
             return null;
-        }
+
+        var output = string.IsNullOrWhiteSpace(outcome.StandardOutput)
+            ? outcome.StandardError
+            : outcome.StandardOutput;
+        return output.Trim();
     }
 
     private static async Task<bool> CommandSucceedsAsync(string fileName, IReadOnlyList<string> args)
-    {
-        try
-        {
-            var psi = new ProcessStartInfo
-            {
-                FileName = fileName,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false
-            };
-
-            foreach (var arg in args)
-                psi.ArgumentList.Add(arg);
-
-            using var process = Process.Start(psi);
-            if (process is null)
-                return false;
-
-            await process.WaitForExitAsync();
-            return process.ExitCode == 0;
-        }
-        catch
-        {
-            return false;
-        }
-    }
+        => (await Processes.RunAsync(new ProcessRequest(fileName, args))).IsSuccess;
 }

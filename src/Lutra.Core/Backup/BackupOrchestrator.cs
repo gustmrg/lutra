@@ -1,84 +1,31 @@
 using System.Diagnostics;
 using System.IO.Compression;
 using System.Reflection;
+using System.Security.Cryptography;
 using Lutra.Core.Configuration;
 using Lutra.Core.History;
 using Lutra.Core.Postgres;
+using Lutra.Core.Processes;
 
 namespace Lutra.Core.Backup;
 
 public class BackupOrchestrator
 {
-    private readonly IProcessExecutor _processExecutor;
+    private readonly IProcessRunner _processes;
     private readonly IBackupHistoryService _historyService;
     private readonly BackupConfig _config;
 
     public BackupOrchestrator(
-        IProcessExecutor processExecutor,
+        IProcessRunner processes,
         IBackupHistoryService historyService,
         BackupConfig config)
     {
-        _processExecutor = processExecutor;
+        _processes = processes;
         _historyService = historyService;
         _config = config;
     }
 
     public async Task<BackupResult> BackupAsync(DatabaseTarget target, CancellationToken cancellationToken = default)
-    {
-        return await RunBackupAsync(
-            target,
-            PostgresCommands.DumpFileExtension(target),
-            target.Compression,
-            (tempFilePath, ct) => ExecuteStreamingBackup(
-                PostgresCommands.Dump(target), tempFilePath, target.Compression, ct),
-            (fileName, fileSize, sha256, startedAt, duration) => new BackupManifest
-            {
-                TargetName = target.Name,
-                TargetType = "database",
-                DatabaseType = target.Type,
-                Database = target.Database,
-                Container = target.Container,
-                BackupFileName = fileName,
-                FileSizeBytes = fileSize,
-                Sha256 = sha256,
-                Compression = target.Compression,
-                Format = target.Format,
-                StartedAt = startedAt,
-                CompletedAt = DateTime.UtcNow,
-                DurationMs = (long)duration.TotalMilliseconds,
-                LutraVersion = GetVersion(),
-                Success = true
-            },
-            cancellationToken);
-    }
-
-    public async Task<IReadOnlyList<BackupResult>> BackupAllAsync(CancellationToken cancellationToken = default)
-    {
-        var results = new List<BackupResult>();
-
-        foreach (var target in _config.Databases)
-        {
-            results.Add(await BackupAsync(target, cancellationToken));
-        }
-
-        return results;
-    }
-
-    public Task<int> CleanupAsync(DatabaseTarget target, CancellationToken cancellationToken = default)
-        => ApplyRetentionAsync(target, dryRun: false, cancellationToken);
-
-    public Task<IReadOnlyList<BackupCleanupCandidate>> PreviewCleanupAsync(
-        DatabaseTarget target,
-        CancellationToken cancellationToken = default)
-        => GetRetentionCandidatesAsync(target, cancellationToken);
-
-    private async Task<BackupResult> RunBackupAsync(
-        DatabaseTarget target,
-        string extension,
-        CompressionType compression,
-        Func<string, CancellationToken, Task> writeBackupAsync,
-        Func<string, long, string, DateTime, TimeSpan, BackupManifest> createManifest,
-        CancellationToken cancellationToken)
     {
         var startTime = DateTime.UtcNow;
         var stopwatch = Stopwatch.StartNew();
@@ -98,23 +45,40 @@ public class BackupOrchestrator
         {
             await using var targetLock = TargetLock.Acquire(_config.BackupDirectory, target.Name, "Backup");
 
-            fileName = BackupFileNaming.Build(target.Name, startTime, backupId, extension, compression);
+            fileName = BackupFileNaming.Build(
+                target.Name, startTime, backupId, PostgresCommands.DumpFileExtension(target), target.Compression);
             var targetDir = Path.Combine(_config.BackupDirectory, target.Name);
             Directory.CreateDirectory(targetDir);
             finalFilePath = Path.Combine(targetDir, fileName);
             tempFilePath = Path.Combine(targetDir, $".{fileName}.tmp");
 
-            await writeBackupAsync(tempFilePath, cancellationToken);
+            var sha256 = await WriteDumpAsync(target, tempFilePath, cancellationToken);
 
             File.Move(tempFilePath, finalFilePath);
             finalMoved = true;
             tempFilePath = null;
 
             var fileInfo = new FileInfo(finalFilePath);
-            var sha256 = await BackupIntegrity.ComputeSha256Async(finalFilePath, cancellationToken);
             stopwatch.Stop();
 
-            var manifest = createManifest(fileName, fileInfo.Length, sha256, startTime, stopwatch.Elapsed);
+            var manifest = new BackupManifest
+            {
+                TargetName = target.Name,
+                TargetType = "database",
+                DatabaseType = target.Type,
+                Database = target.Database,
+                Container = target.Container,
+                BackupFileName = fileName,
+                FileSizeBytes = fileInfo.Length,
+                Sha256 = sha256,
+                Compression = target.Compression,
+                Format = target.Format,
+                StartedAt = startTime,
+                CompletedAt = DateTime.UtcNow,
+                DurationMs = (long)stopwatch.Elapsed.TotalMilliseconds,
+                LutraVersion = GetVersion(),
+                Success = true
+            };
 
             await BackupIntegrity.WriteChecksumFileAsync(finalFilePath, sha256, cancellationToken);
             await BackupIntegrity.WriteManifestAsync(finalFilePath, manifest, cancellationToken);
@@ -182,33 +146,66 @@ public class BackupOrchestrator
         }
     }
 
-    private async Task ExecuteStreamingBackup(
-        DockerExecCommand command, string filePath, CompressionType compression, CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<BackupResult>> BackupAllAsync(CancellationToken cancellationToken = default)
     {
-        using var result = await _processExecutor.ExecuteAsync(command, cancellationToken);
+        var results = new List<BackupResult>();
 
-        if (!result.IsSuccess)
-            throw new InvalidOperationException($"Backup command failed (exit code {result.ExitCode}): {result.StandardError}");
+        foreach (var target in _config.Databases)
+        {
+            results.Add(await BackupAsync(target, cancellationToken));
+        }
 
-        await WriteStreamToFile(result.OutputStream, filePath, compression, cancellationToken);
+        return results;
     }
 
-    private static async Task WriteStreamToFile(
-        Stream input, string outputPath, CompressionType compression, CancellationToken cancellationToken)
-    {
-        await using var fileStream = new FileStream(
-            outputPath, FileMode.Create, FileAccess.Write, FileShare.None, 81920, useAsync: true);
+    public Task<int> CleanupAsync(DatabaseTarget target, CancellationToken cancellationToken = default)
+        => ApplyRetentionAsync(target, dryRun: false, cancellationToken);
 
-        if (compression == CompressionType.Gzip)
+    public Task<IReadOnlyList<BackupCleanupCandidate>> PreviewCleanupAsync(
+        DatabaseTarget target,
+        CancellationToken cancellationToken = default)
+        => GetRetentionCandidatesAsync(target, cancellationToken);
+
+    /// <summary>
+    /// Streams the dump through compression and hashing straight into
+    /// <paramref name="filePath"/> and returns the SHA-256 of the bytes written.
+    /// </summary>
+    private async Task<string> WriteDumpAsync(
+        DatabaseTarget target,
+        string filePath,
+        CancellationToken cancellationToken)
+    {
+        using var sha256 = SHA256.Create();
+        ProcessOutcome outcome;
+
+        await using (var file = new FileStream(
+            filePath, FileMode.Create, FileAccess.Write, FileShare.None, 81920, useAsync: true))
+        await using (var hashing = new CryptoStream(file, sha256, CryptoStreamMode.Write))
         {
-            await using var gzipStream = new GZipStream(fileStream, CompressionLevel.Optimal);
-            await input.CopyToAsync(gzipStream, cancellationToken);
+            if (target.Compression == CompressionType.Gzip)
+            {
+                await using var gzip = new GZipStream(hashing, CompressionLevel.Optimal, leaveOpen: true);
+                outcome = await RunDumpAsync(target, gzip, cancellationToken);
+            }
+            else
+            {
+                outcome = await RunDumpAsync(target, hashing, cancellationToken);
+            }
+
+            await hashing.FlushFinalBlockAsync(cancellationToken);
         }
-        else
+
+        if (!outcome.IsSuccess)
         {
-            await input.CopyToAsync(fileStream, cancellationToken);
+            throw new InvalidOperationException(
+                $"Backup command failed (exit code {outcome.ExitCode}): {outcome.StandardError}");
         }
+
+        return Convert.ToHexString(sha256.Hash!).ToLowerInvariant();
     }
+
+    private Task<ProcessOutcome> RunDumpAsync(DatabaseTarget target, Stream output, CancellationToken cancellationToken)
+        => _processes.RunAsync(PostgresCommands.Dump(target).ToProcessRequest(output: output), cancellationToken);
 
     private async Task<int> ApplyRetentionAsync(DatabaseTarget target, bool dryRun, CancellationToken cancellationToken)
     {

@@ -2,6 +2,7 @@ using Lutra.Core.Backup;
 using Lutra.Core.Configuration;
 using Lutra.Core.History;
 using Lutra.Core.Persistence;
+using Lutra.Core.Processes;
 
 namespace Lutra.Core.Tests;
 
@@ -84,13 +85,11 @@ public sealed class HistoryAndRetentionTests
             Path.Combine(temp.Path, "state"),
             Path.Combine(temp.Path, "lutra.yaml")));
 
-    private sealed class NeverProcessExecutor : IProcessExecutor
+    private sealed class NeverProcessExecutor : IProcessRunner
     {
-        public Task<ProcessResult> ExecuteAsync(DockerExecCommand command, CancellationToken cancellationToken = default)
-            => throw new InvalidOperationException("Not expected.");
-
-        public Task<ProcessResult> ExecuteWithInputAsync(
-            DockerExecCommand command, Stream input, CancellationToken cancellationToken = default)
+        public Task<ProcessOutcome> RunAsync(
+            ProcessRequest request,
+            CancellationToken cancellationToken = default)
             => throw new InvalidOperationException("Not expected.");
     }
 }

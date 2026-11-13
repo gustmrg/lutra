@@ -5,6 +5,7 @@ using Lutra.Core.Configuration;
 using Lutra.Core.History;
 using Lutra.Core.Notifications;
 using Lutra.Core.Persistence;
+using Lutra.Core.Processes;
 using Lutra.Core.Restore;
 using Lutra.Core.Sync;
 
@@ -31,15 +32,13 @@ internal static class ServiceFactory
     public static BackupOrchestrator CreateOrchestrator(BackupConfig config)
     {
         var historyService = CreateHistoryService(config);
-        var processExecutor = new DockerProcessExecutor();
-        return new BackupOrchestrator(processExecutor, historyService, config);
+        return new BackupOrchestrator(new SystemProcessRunner(), historyService, config);
     }
 
     public static RestoreOrchestrator CreateRestoreOrchestrator(BackupConfig config)
     {
         var historyService = CreateHistoryService(config);
-        var processExecutor = new DockerProcessExecutor();
-        return new RestoreOrchestrator(processExecutor, historyService, config);
+        return new RestoreOrchestrator(new SystemProcessRunner(), historyService, config);
     }
 
     public static IBackupHistoryService CreateHistoryService(BackupConfig config)

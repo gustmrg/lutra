@@ -1,6 +1,7 @@
 using Lutra.Core.Configuration;
 using Lutra.Core.History;
 using Lutra.Core.Persistence;
+using Lutra.Core.Processes;
 using Lutra.Core.Sync;
 
 namespace Lutra.Core.Tests;
@@ -168,33 +169,31 @@ public sealed class LocalStateBoundaryTests
             config.StateDirectory!,
             config.ConfigPath!));
 
-    private sealed class CapturingRsyncRunner : IRsyncProcessRunner
+    private sealed class CapturingRsyncRunner : IProcessRunner
     {
         public List<(string FileName, IReadOnlyList<string> Arguments)> Invocations { get; } = [];
 
-        public Task<RsyncProcessResult> RunAsync(
-            string fileName,
-            IReadOnlyList<string> arguments,
-            CancellationToken cancellationToken)
+        public Task<ProcessOutcome> RunAsync(
+            ProcessRequest request,
+            CancellationToken cancellationToken = default)
         {
-            Invocations.Add((fileName, arguments.ToArray()));
-            return Task.FromResult(new RsyncProcessResult(0, "ok", ""));
+            Invocations.Add((request.FileName, request.Arguments.ToArray()));
+            return Task.FromResult(new ProcessOutcome(0, "ok", ""));
         }
     }
 
-    private sealed class BlockingRsyncRunner : IRsyncProcessRunner
+    private sealed class BlockingRsyncRunner : IProcessRunner
     {
         public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        public async Task<RsyncProcessResult> RunAsync(
-            string fileName,
-            IReadOnlyList<string> arguments,
-            CancellationToken cancellationToken)
+        public async Task<ProcessOutcome> RunAsync(
+            ProcessRequest request,
+            CancellationToken cancellationToken = default)
         {
             Started.TrySetResult();
             await Release.Task.WaitAsync(cancellationToken);
-            return new RsyncProcessResult(0, "ok", "");
+            return new ProcessOutcome(0, "ok", "");
         }
     }
 }

@@ -1,6 +1,6 @@
 using System.ComponentModel;
-using System.Diagnostics;
 using System.Runtime.InteropServices;
+using Lutra.Core.Processes;
 using Spectre.Console;
 using Spectre.Console.Cli;
 
@@ -87,28 +87,7 @@ public sealed class ScheduleRemoveCommand : AsyncCommand<ScheduleRemoveCommand.S
         }
     }
 
-    private static async Task RunSystemctl(params string[] args)
-    {
-        try
-        {
-            var psi = new ProcessStartInfo("systemctl")
-            {
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
-
-            foreach (var arg in args)
-                psi.ArgumentList.Add(arg);
-
-            using var process = Process.Start(psi);
-            if (process is not null)
-                await process.WaitForExitAsync();
-        }
-        catch
-        {
-            // systemctl may not be available or may fail — non-fatal
-        }
-    }
+    // systemctl may be missing or fail; removing the unit files is what matters.
+    private static Task RunSystemctl(params string[] args)
+        => new SystemProcessRunner().RunAsync(new ProcessRequest("systemctl", args));
 }

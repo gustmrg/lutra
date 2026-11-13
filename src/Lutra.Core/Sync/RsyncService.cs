@@ -1,8 +1,8 @@
-using System.Diagnostics;
 using System.Text.Json;
 using Lutra.Core.Backup;
 using Lutra.Core.Configuration;
 using Lutra.Core.History;
+using Lutra.Core.Processes;
 
 namespace Lutra.Core.Sync;
 
@@ -10,18 +10,18 @@ public sealed class RsyncService
 {
     private readonly BackupConfig _config;
     private readonly IBackupHistoryService _history;
-    private readonly IRsyncProcessRunner _processRunner;
+    private readonly IProcessRunner _processes;
     private readonly Func<string, string, string, FileStream> _targetLockFactory;
 
     public RsyncService(
         BackupConfig config,
         IBackupHistoryService history,
-        IRsyncProcessRunner? processRunner = null,
+        IProcessRunner? processes = null,
         Func<string, string, string, FileStream>? targetLockFactory = null)
     {
         _config = config;
         _history = history;
-        _processRunner = processRunner ?? new SystemRsyncProcessRunner();
+        _processes = processes ?? new SystemProcessRunner();
         _targetLockFactory = targetLockFactory ?? TargetLock.Acquire;
     }
 
@@ -31,12 +31,12 @@ public sealed class RsyncService
         if (!File.Exists(sync.SshKeyPath))
             return new SyncValidationResult(false, $"SSH key does not exist: {sync.SshKeyPath}");
 
-        var localRsync = await _processRunner.RunAsync("rsync", ["--version"], cancellationToken);
+        var localRsync = await _processes.RunAsync(new ProcessRequest("rsync", ["--version"]), cancellationToken);
         if (localRsync.ExitCode != 0)
             return new SyncValidationResult(false, "rsync is not installed locally.");
 
         var remoteCommand = $"command -v rsync >/dev/null && mkdir -p {ShellQuote(sync.DestinationPath)} && test -w {ShellQuote(sync.DestinationPath)}";
-        var ssh = await _processRunner.RunAsync("ssh", BuildSshArguments(sync, remoteCommand), cancellationToken);
+        var ssh = await _processes.RunAsync(new ProcessRequest("ssh", BuildSshArguments(sync, remoteCommand)), cancellationToken);
         return ssh.ExitCode == 0
             ? new SyncValidationResult(true, "SSH connectivity, remote rsync, and destination write access are available.")
             : new SyncValidationResult(false, $"Remote validation failed: {SafeError(ssh)}");
@@ -126,9 +126,9 @@ public sealed class RsyncService
             args.Add(source.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar);
             args.Add($"{sync.User}@{sync.Host}:{destination.TrimEnd('/')}/");
 
-            var process = await _processRunner.RunAsync("rsync", args, cancellationToken);
+            var process = await _processes.RunAsync(new ProcessRequest("rsync", args), cancellationToken);
             var success = process.ExitCode == 0;
-            var output = process.StdOut;
+            var output = process.StandardOutput;
             var error = success ? null : SafeError(process);
             var result = new SyncResult(success, dryRun, targetName, output, error, startedAt);
 
@@ -247,56 +247,11 @@ public sealed class RsyncService
         }
     }
 
-    private static string SafeError(RsyncProcessResult result)
-        => string.IsNullOrWhiteSpace(result.StdErr)
+    private static string SafeError(ProcessOutcome result)
+        => string.IsNullOrWhiteSpace(result.StandardError)
             ? $"command exited with code {result.ExitCode}"
-            : result.StdErr.Trim();
+            : result.StandardError.Trim();
 
-}
-
-public interface IRsyncProcessRunner
-{
-    Task<RsyncProcessResult> RunAsync(
-        string fileName,
-        IReadOnlyList<string> arguments,
-        CancellationToken cancellationToken);
-}
-
-public sealed record RsyncProcessResult(int ExitCode, string StdOut, string StdErr);
-
-internal sealed class SystemRsyncProcessRunner : IRsyncProcessRunner
-{
-    public async Task<RsyncProcessResult> RunAsync(
-        string fileName,
-        IReadOnlyList<string> arguments,
-        CancellationToken cancellationToken)
-    {
-        try
-        {
-            var startInfo = new ProcessStartInfo
-            {
-                FileName = fileName,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
-            foreach (var argument in arguments)
-                startInfo.ArgumentList.Add(argument);
-
-            using var process = Process.Start(startInfo);
-            if (process is null)
-                return new RsyncProcessResult(-1, "", "Failed to start process.");
-            var stdout = process.StandardOutput.ReadToEndAsync(cancellationToken);
-            var stderr = process.StandardError.ReadToEndAsync(cancellationToken);
-            await process.WaitForExitAsync(cancellationToken);
-            return new RsyncProcessResult(process.ExitCode, await stdout, await stderr);
-        }
-        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or FileNotFoundException)
-        {
-            return new RsyncProcessResult(-1, "", ex.Message);
-        }
-    }
 }
 
 public sealed record SyncResult(
