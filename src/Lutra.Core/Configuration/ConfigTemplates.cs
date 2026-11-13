@@ -137,19 +137,6 @@ databases:
   #   compression: gzip
   #   # sql_server_backup_kind: full  # full, differential, or log
 
-# Optional server inventory snapshots (restoration aid, not system-state backup).
-# Collector failures are recorded in the snapshot and never fail a backup run.
-# inventory:
-#   enabled: true
-#   schedule: "*-*-* 04:00:00"
-#   # Omit collectors to run all: docker, packages, systemd, crontabs, firewall
-#   collectors:
-#     - docker
-#     - packages
-#     - systemd
-#     - crontabs
-#     - firewall
-
 # SQLite databases use the path inside the configured container.
 # databases may also include:
 #   - name: app-sqlite

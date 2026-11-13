@@ -50,12 +50,6 @@ public sealed class ScheduleInstallCommand : AsyncCommand<TargetSettings>
                 }
             }
 
-            if (settings.Target is null && config.Inventory is { Enabled: true } inventory)
-            {
-                InstallInventoryUnit(lutraPath, resolvedConfigPath, resolvedEnvPath, inventory.Schedule);
-                AnsiConsole.MarkupLine($"  [green]Installed[/] lutra-inventory.timer ({inventory.Schedule.EscapeMarkup()})");
-            }
-
             AnsiConsole.MarkupLine($"\nRun [blue]sudo systemctl daemon-reload[/] to load the new units.");
             AnsiConsole.MarkupLine("Enable timers with [blue]sudo systemctl enable --now <unit>.timer[/]");
             return Task.FromResult(0);
@@ -97,33 +91,6 @@ public sealed class ScheduleInstallCommand : AsyncCommand<TargetSettings>
             """;
         File.WriteAllText(Path.Combine(SystemdDir, $"{unitName}.service"), serviceContent);
         File.WriteAllText(Path.Combine(SystemdDir, $"{unitName}.timer"), timerContent);
-    }
-
-    private static void InstallInventoryUnit(string lutraPath, string configPath, string envFilePath, string schedule)
-    {
-        var serviceContent = $"""
-            [Unit]
-            Description=Lutra server inventory snapshot
-
-            [Service]
-            Type=oneshot
-            ExecStart={lutraPath} inventory --config {configPath} --env-file {envFilePath}
-            """;
-
-        var timerContent = $"""
-            [Unit]
-            Description=Lutra server inventory timer
-
-            [Timer]
-            OnCalendar={schedule}
-            Persistent=true
-
-            [Install]
-            WantedBy=timers.target
-            """;
-
-        File.WriteAllText(Path.Combine(SystemdDir, "lutra-inventory.service"), serviceContent);
-        File.WriteAllText(Path.Combine(SystemdDir, "lutra-inventory.timer"), timerContent);
     }
 
     private static void InstallUnit(string unitName, IBackupTarget target, string lutraPath, string configPath, string envFilePath)

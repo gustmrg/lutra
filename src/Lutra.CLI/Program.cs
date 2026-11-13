@@ -3,7 +3,6 @@ using Lutra.CLI.Commands.Cleanup;
 using Lutra.CLI.Commands.Config;
 using Lutra.CLI.Commands.Health;
 using Lutra.CLI.Commands.History;
-using Lutra.CLI.Commands.Inventory;
 using Lutra.CLI.Commands.Restore;
 using Lutra.CLI.Commands.Schedule;
 using Lutra.CLI.Commands.Sync;
@@ -53,9 +52,6 @@ app.Configure(config =>
     config.AddCommand<HealthCommand>("health")
         .WithDescription("Analyze backup age, integrity, and operational anomalies.");
 
-    config.AddCommand<InventoryCommand>("inventory")
-        .WithDescription("Capture a best-effort server inventory snapshot when enabled.");
-
     config.AddCommand<SyncCommand>("sync")
         .WithDescription("Push configured backups to an SSH/rsync destination.");
 
@@ -78,10 +74,10 @@ app.Configure(config =>
 
     config.AddBranch<CommandSettings>("schedule", schedule =>
     {
-        schedule.SetDescription("Manage Lutra systemd timers for backups, restore drills, and inventory.");
+        schedule.SetDescription("Manage Lutra systemd timers for backups and restore drills.");
 
         schedule.AddCommand<ScheduleInstallCommand>("install")
-            .WithDescription("Install systemd timer units for backups, restore drills, and inventory.");
+            .WithDescription("Install systemd timer units for backups and restore drills.");
 
         schedule.AddCommand<ScheduleRemoveCommand>("remove")
             .WithDescription("Remove installed Lutra systemd timer units.");

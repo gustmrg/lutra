@@ -44,12 +44,6 @@ public sealed class ConfigValidateCommand : AsyncCommand<ConfigValidateSettings>
             foreach (var volume in config.Volumes)
                 AnsiConsole.MarkupLine($"    - {volume.Name.EscapeMarkup()} ({volume.Volume.EscapeMarkup()})");
 
-            if (config.Inventory is { } inventory)
-            {
-                var collectors = inventory.Collectors is null ? "all collectors" : string.Join(", ", inventory.Collectors);
-                AnsiConsole.MarkupLine($"  Inventory: {(inventory.Enabled ? "[green]enabled[/]" : "[grey]disabled[/]")} ({collectors.EscapeMarkup()})");
-            }
-
             if (config.Sync is { } sync)
                 AnsiConsole.MarkupLine($"  Offsite sync: [blue]{sync.User.EscapeMarkup()}@{sync.Host.EscapeMarkup()}:{sync.DestinationPath.EscapeMarkup()}[/]");
 
@@ -199,10 +193,6 @@ public sealed class ConfigValidateCommand : AsyncCommand<ConfigValidateSettings>
             else
                 AnsiConsole.MarkupLine($"  {volume.Name.EscapeMarkup()}: [green]Docker volume exists[/]");
         }
-
-        if (config.Inventory is { Enabled: true } inventory
-            && !await ValidateScheduleExpressionAsync("inventory", inventory.Schedule))
-            failed = true;
 
         if (config.AllTargets().Any(target => target.Encryption is not null) || config.Encryption is not null)
         {

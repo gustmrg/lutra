@@ -66,19 +66,6 @@ public sealed class BackupRunCommand : AsyncCommand<TargetSettings>
                 settings.Target,
                 BackupNotificationMapper.Map(results, config));
 
-            // A full run also captures the optional host inventory. It is best-effort:
-            // an inventory failure is visible but never changes the backup exit status.
-            if (settings.Target is null && config.Inventory is { Enabled: true })
-            {
-                var inventory = await AnsiConsole.Status()
-                    .StartAsync("Capturing server inventory...", _ =>
-                        ServiceFactory.CreateInventoryService(config).CaptureAsync());
-                if (inventory.Success)
-                    AnsiConsole.MarkupLine($"[green]Inventory snapshot:[/] {inventory.FilePath!.EscapeMarkup()}");
-                else
-                    AnsiConsole.MarkupLine($"[yellow]Inventory snapshot failed (backups are unaffected):[/] {inventory.ErrorMessage?.EscapeMarkup() ?? "Unknown error"}");
-            }
-
             var syncSucceeded = true;
             if (results.All(result => result.Success) && config.Sync is { PostBackup: true })
             {
