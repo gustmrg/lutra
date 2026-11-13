@@ -168,7 +168,7 @@ public sealed class NotificationTests
     }
 
     [Fact]
-    public void BackupMapper_MapsDatabaseWalAndBlankFailure()
+    public void BackupMapper_MapsDatabaseAndBlankFailure()
     {
         var config = CreateConfig();
         config.Databases.Add(new DatabaseTarget
@@ -177,16 +177,15 @@ public sealed class NotificationTests
             Type = DatabaseType.PostgreSql,
             Container = "postgres-1",
             Database = "app",
-            Username = "postgres",
-            PostgresWalArchivePath = "/wal"
+            Username = "postgres"
         });
         var success = new BackupResult
         {
-            TargetName = "POSTGRES-WAL",
+            TargetName = "POSTGRES",
             Success = true,
             Timestamp = DateTime.UtcNow,
             Duration = TimeSpan.FromSeconds(2),
-            FilePath = "/backups/postgres-wal/archive.tar.gz",
+            FilePath = "/backups/postgres/archive.dump.gz",
             FileSizeBytes = 0
         };
         var failure = success with
@@ -200,7 +199,7 @@ public sealed class NotificationTests
 
         var mapped = BackupNotificationMapper.Map([success, failure], config);
 
-        Assert.Equal(BackupNotificationTargetKind.PostgresWal, mapped[0].TargetKind);
+        Assert.Equal(BackupNotificationTargetKind.Database, mapped[0].TargetKind);
         Assert.Equal("app", mapped[0].Database);
         Assert.Equal("postgres-1", mapped[0].Container);
         Assert.Equal(0, mapped[0].FileSizeBytes);

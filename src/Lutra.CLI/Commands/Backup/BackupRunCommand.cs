@@ -29,21 +29,7 @@ public sealed class BackupRunCommand : AsyncCommand<TargetSettings>
                         _ => throw new ConfigurationException($"Unknown target type for '{target.Name}'.")
                     });
 
-                if (result.Success && target is DatabaseTarget
-                    {
-                        Type: DatabaseType.PostgreSql,
-                        PostgresWalArchivePath: not null
-                    } postgres)
-                {
-                    var walResult = await AnsiConsole.Status()
-                        .StartAsync($"Archiving WAL for {target.Name}...", _ =>
-                            orchestrator.BackupPostgresWalAsync(postgres));
-                    results = [result, walResult];
-                }
-                else
-                {
-                    results = [result];
-                }
+                results = [result];
             }
             else
             {

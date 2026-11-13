@@ -197,16 +197,6 @@ public sealed class ConfigValidateCommand : AsyncCommand<ConfigValidateSettings>
     {
         var valid = true;
 
-        foreach (var database in config.Databases.Where(database => database.PostgresWalArchivePath is not null))
-        {
-            var path = database.PostgresWalArchivePath!;
-            if (!Directory.Exists(path) || !IsReadable(path))
-            {
-                AnsiConsole.MarkupLine($"[red]{database.Name.EscapeMarkup()}:[/] PostgreSQL WAL archive path is missing or unreadable: {path.EscapeMarkup()}");
-                valid = false;
-            }
-        }
-
         foreach (var ft in config.Files)
         {
             foreach (var path in ft.Paths)

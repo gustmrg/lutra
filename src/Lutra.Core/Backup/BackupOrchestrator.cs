@@ -98,56 +98,13 @@ public class BackupOrchestrator
             cancellationToken);
     }
 
-    public async Task<BackupResult> BackupPostgresWalAsync(
-        DatabaseTarget databaseTarget,
-        CancellationToken cancellationToken = default)
-    {
-        if (databaseTarget.Type != DatabaseType.PostgreSql
-            || string.IsNullOrWhiteSpace(databaseTarget.PostgresWalArchivePath))
-            throw new ConfigurationException($"Target '{databaseTarget.Name}' has no PostgreSQL WAL archive path configured.");
-
-        var target = CreateWalTarget(databaseTarget);
-        return await RunBackupAsync(
-            target,
-            ".tar",
-            target.Compression,
-            (tempFilePath, _, ct) => FileArchive.CreateAsync(
-                [databaseTarget.PostgresWalArchivePath], [], tempFilePath, target.Compression, ct),
-            (fileName, fileSize, sha256, startedAt, duration) => new BackupManifest
-            {
-                TargetName = target.Name,
-                TargetType = "postgres-wal",
-                DatabaseType = DatabaseType.PostgreSql,
-                Database = databaseTarget.Database,
-                Container = databaseTarget.Container,
-                Paths = [databaseTarget.PostgresWalArchivePath],
-                BackupFileName = fileName,
-                FileSizeBytes = fileSize,
-                Sha256 = sha256,
-                Compression = target.Compression,
-                Format = "wal-archive",
-                StartedAt = startedAt,
-                CompletedAt = DateTime.UtcNow,
-                DurationMs = (long)duration.TotalMilliseconds,
-                LutraVersion = GetVersion(),
-                Success = true,
-                Encrypted = GetEncryption(target) is not null,
-                EncryptionRecipientFingerprint = GetRecipientFingerprint(target)
-            },
-            cancellationToken);
-    }
-
     public async Task<IReadOnlyList<BackupResult>> BackupAllAsync(CancellationToken cancellationToken = default)
     {
         var results = new List<BackupResult>();
 
         foreach (var target in _config.Databases)
         {
-            var backup = await BackupAsync(target, cancellationToken);
-            results.Add(backup);
-            if (backup.Success && target.Type == DatabaseType.PostgreSql
-                && target.PostgresWalArchivePath is not null)
-                results.Add(await BackupPostgresWalAsync(target, cancellationToken));
+            results.Add(await BackupAsync(target, cancellationToken));
         }
 
         foreach (var target in _config.Files)
@@ -158,32 +115,13 @@ public class BackupOrchestrator
         return results;
     }
 
-    public async Task<int> CleanupAsync(IBackupTarget target, CancellationToken cancellationToken = default)
-    {
-        var count = await ApplyRetentionAsync(target, dryRun: false, cancellationToken);
-        if (target is DatabaseTarget { Type: DatabaseType.PostgreSql, PostgresWalArchivePath: not null } database)
-            count += await ApplyRetentionAsync(CreateWalTarget(database), dryRun: false, cancellationToken);
-        return count;
-    }
+    public Task<int> CleanupAsync(IBackupTarget target, CancellationToken cancellationToken = default)
+        => ApplyRetentionAsync(target, dryRun: false, cancellationToken);
 
-    public async Task<IReadOnlyList<BackupCleanupCandidate>> PreviewCleanupAsync(
+    public Task<IReadOnlyList<BackupCleanupCandidate>> PreviewCleanupAsync(
         IBackupTarget target,
         CancellationToken cancellationToken = default)
-    {
-        var candidates = (await GetRetentionCandidatesAsync(target, cancellationToken)).ToList();
-        if (target is DatabaseTarget { Type: DatabaseType.PostgreSql, PostgresWalArchivePath: not null } database)
-            candidates.AddRange(await GetRetentionCandidatesAsync(CreateWalTarget(database), cancellationToken));
-        return candidates;
-    }
-
-    private static RecoveryArtifactTarget CreateWalTarget(DatabaseTarget target) => new()
-    {
-        Name = target.Name + "-wal",
-        Schedule = target.Schedule,
-        Compression = target.Compression,
-        Retention = target.Retention,
-        Encryption = target.Encryption
-    };
+        => GetRetentionCandidatesAsync(target, cancellationToken);
 
     private async Task<BackupResult> RunBackupAsync(
         IBackupTarget target,
@@ -431,12 +369,3 @@ public class BackupOrchestrator
 }
 
 public sealed record BackupCleanupCandidate(HistoryRecord Record, IReadOnlyList<string> PathsToDelete);
-
-internal sealed class RecoveryArtifactTarget : IBackupTarget
-{
-    public required string Name { get; init; }
-    public required string Schedule { get; init; }
-    public required CompressionType Compression { get; init; }
-    public RetentionPolicy? Retention { get; init; }
-    public EncryptionConfig? Encryption { get; init; }
-}

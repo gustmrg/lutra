@@ -52,8 +52,6 @@ public sealed class RsyncService
         var startedAt = DateTime.UtcNow;
         var source = _config.BackupDirectory;
         var destination = sync.DestinationPath;
-        string? walSource = null;
-        string? walDestination = null;
         List<string> historyTargetNames;
         List<string> lockTargetNames;
 
@@ -68,23 +66,11 @@ public sealed class RsyncService
             destination = CombineRemotePath(destination, target.Name);
             historyTargetNames = [target.Name];
             lockTargetNames = [target.Name];
-            if (target is DatabaseTarget { Type: DatabaseType.PostgreSql, PostgresWalArchivePath: not null })
-            {
-                walSource = Path.Combine(_config.BackupDirectory, target.Name + "-wal");
-                walDestination = CombineRemotePath(sync.DestinationPath, target.Name + "-wal");
-                lockTargetNames.Add(target.Name + "-wal");
-            }
         }
         else
         {
             historyTargetNames = _config.AllTargets().Select(target => target.Name).ToList();
-            lockTargetNames = historyTargetNames
-                .Concat(_config.Databases
-                    .Where(database => database.PostgresWalArchivePath is not null)
-                    .Select(database => database.Name + "-wal"))
-                .Distinct(StringComparer.Ordinal)
-                .OrderBy(name => name, StringComparer.Ordinal)
-                .ToList();
+            lockTargetNames = historyTargetNames;
         }
 
         var operations = new List<HistoryOperationScope>();
@@ -144,17 +130,6 @@ public sealed class RsyncService
             var success = process.ExitCode == 0;
             var output = process.StdOut;
             var error = success ? null : SafeError(process);
-            if (success && walSource is not null && Directory.Exists(walSource))
-            {
-                var walArgs = args.ToList();
-                walArgs[^2] = walSource.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
-                walArgs[^1] = $"{sync.User}@{sync.Host}:{walDestination!.TrimEnd('/')}/";
-                var walProcess = await _processRunner.RunAsync("rsync", walArgs, cancellationToken);
-                success = walProcess.ExitCode == 0;
-                output += walProcess.StdOut;
-                if (!success)
-                    error = SafeError(walProcess);
-            }
             var result = new SyncResult(success, dryRun, targetName, output, error, startedAt);
 
             if (!dryRun)
