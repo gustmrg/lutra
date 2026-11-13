@@ -168,8 +168,6 @@ public class YamlConfigLoader : IConfigLoader
             if (string.IsNullOrWhiteSpace(db.Username))
                 throw new ConfigurationException($"{prefix} ({db.Name}): 'username' is required.");
             ValidatePostgresFormat(prefix, db);
-            if (db.PostgresWalArchivePath is not null && !targetNames.Add(db.Name + "-wal"))
-                throw new ConfigurationException($"{prefix} ({db.Name}): generated WAL target name '{db.Name}-wal' conflicts with another target.");
         }
 
         if (config.Sync is { } sync)

@@ -101,7 +101,4 @@ public class DatabaseTarget : IBackupTarget
     public RetentionPolicy? Retention { get; init; }
 
     public EncryptionConfig? Encryption { get; init; }
-
-    /// <summary>Host path containing PostgreSQL WAL files produced by archive_command.</summary>
-    public string? PostgresWalArchivePath { get; init; }
 }

@@ -16,23 +16,16 @@ public static class BackupNotificationMapper
     {
         var target = config.AllTargets().FirstOrDefault(candidate =>
             candidate.Name.Equals(result.TargetName, StringComparison.OrdinalIgnoreCase));
-        var walDatabase = target is null
-            ? config.Databases.FirstOrDefault(database =>
-                (database.Name + "-wal").Equals(result.TargetName, StringComparison.OrdinalIgnoreCase))
-            : null;
-
-        if (target is null && walDatabase is null)
+        if (target is null)
             throw new InvalidOperationException($"Backup result target '{result.TargetName}' is not configured.");
 
-        var database = target as DatabaseTarget ?? walDatabase;
-        var targetKind = walDatabase is not null
-            ? BackupNotificationTargetKind.PostgresWal
-            : target switch
-            {
-                DatabaseTarget => BackupNotificationTargetKind.Database,
-                FileTarget => BackupNotificationTargetKind.Files,
-                _ => throw new InvalidOperationException($"Unsupported backup target '{result.TargetName}'.")
-            };
+        var database = target as DatabaseTarget;
+        var targetKind = target switch
+        {
+            DatabaseTarget => BackupNotificationTargetKind.Database,
+            FileTarget => BackupNotificationTargetKind.Files,
+            _ => throw new InvalidOperationException($"Unsupported backup target '{result.TargetName}'.")
+        };
 
         return new BackupNotificationDetail
         {

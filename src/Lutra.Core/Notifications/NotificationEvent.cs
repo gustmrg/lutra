@@ -39,8 +39,7 @@ public sealed record NotificationEvent
 public enum BackupNotificationTargetKind
 {
     Database,
-    Files,
-    PostgresWal
+    Files
 }
 
 public sealed record BackupNotificationDetail
