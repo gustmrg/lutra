@@ -45,6 +45,16 @@ public class RestoreOrchestrator
             if (!File.Exists(backupFilePath))
                 throw new FileNotFoundException($"Backup file not found: {backupFilePath}");
 
+            // Checked before anything is dropped: a truncated or corrupted dump must
+            // not get the chance to replace a working database.
+            var integrity = await BackupIntegrity.VerifyFileAsync(backupFilePath, cancellationToken);
+            if (!integrity.Success)
+            {
+                throw new InvalidOperationException(
+                    $"Integrity check failed: {integrity.Message} The database was not touched. " +
+                    "The .sha256 and .json files written with the backup must sit next to it.");
+            }
+
             await using var targetLock = TargetLock.Acquire(_config.BackupDirectory, target.Name, "Restore");
 
             var source = DescribeSource(backupFilePath);
