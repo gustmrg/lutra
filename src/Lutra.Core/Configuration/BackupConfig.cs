@@ -1,4 +1,3 @@
-using Lutra.Core.Encryption;
 using Lutra.Core.Notifications;
 using Lutra.Core.Sync;
 using YamlDotNet.Serialization;
@@ -49,9 +48,6 @@ public class BackupConfig
     /// </summary>
     /// <seealso cref="DatabaseTarget.Retention"/>
     public required RetentionPolicy Retention { get; init; }
-
-    /// <summary>Gets optional global age encryption inherited by targets.</summary>
-    public EncryptionConfig? Encryption { get; init; }
 
     /// <summary>
     /// Gets the list of database targets to back up.

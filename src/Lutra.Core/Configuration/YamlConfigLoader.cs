@@ -126,7 +126,6 @@ public class YamlConfigLoader : IConfigLoader
             throw new ConfigurationException("'state_directory' must resolve to an absolute path.");
 
         ValidateRetention("retention", config.Retention);
-        ValidateEncryption("encryption", config.Encryption);
 
         if (config.Databases.Count == 0)
             throw new ConfigurationException("At least one target must be configured under 'databases'.");
@@ -159,7 +158,6 @@ public class YamlConfigLoader : IConfigLoader
 
             if (db.Retention is not null)
                 ValidateRetention($"{prefix} ({db.Name}).retention", db.Retention);
-            ValidateEncryption($"{prefix} ({db.Name}).encryption", db.Encryption);
 
             if (db.PasswordEnv is not null && Environment.GetEnvironmentVariable(db.PasswordEnv) is null)
                 throw new ConfigurationException(
@@ -183,17 +181,6 @@ public class YamlConfigLoader : IConfigLoader
 
         if (config.Notifications?.Discord is { } discord)
             DiscordWebhookUrlResolver.Resolve(discord);
-    }
-
-    private static void ValidateEncryption(string prefix, Lutra.Core.Encryption.EncryptionConfig? encryption)
-    {
-        if (encryption is null)
-            return;
-        if (!encryption.Type.Equals("age", StringComparison.OrdinalIgnoreCase))
-            throw new ConfigurationException($"{prefix}: only type 'age' is supported.");
-        if (string.IsNullOrWhiteSpace(encryption.Recipient)
-            || !encryption.Recipient.StartsWith("age1", StringComparison.Ordinal))
-            throw new ConfigurationException($"{prefix}: a valid age recipient public key is required.");
     }
 
     private static void ValidateRetention(string prefix, RetentionPolicy retention)
