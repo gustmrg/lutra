@@ -3,6 +3,7 @@ using System.IO.Compression;
 using Lutra.Core.Backup;
 using Lutra.Core.Configuration;
 using Lutra.Core.History;
+using Lutra.Core.Postgres;
 
 namespace Lutra.Core.Restore;
 
@@ -12,18 +13,15 @@ namespace Lutra.Core.Restore;
 /// </summary>
 public class RestoreOrchestrator
 {
-    private readonly IReadOnlyDictionary<DatabaseType, IRestoreProvider> _providers;
     private readonly IProcessExecutor _processExecutor;
     private readonly IBackupHistoryService _historyService;
     private readonly BackupConfig _config;
 
     public RestoreOrchestrator(
-        IEnumerable<IRestoreProvider> providers,
         IProcessExecutor processExecutor,
         IBackupHistoryService historyService,
         BackupConfig config)
     {
-        _providers = providers.ToDictionary(p => p.Type);
         _processExecutor = processExecutor;
         _historyService = historyService;
         _config = config;
@@ -48,10 +46,9 @@ public class RestoreOrchestrator
 
             await using var targetLock = TargetLock.Acquire(_config.BackupDirectory, target.Name, "Restore");
 
-            var provider = GetProvider(target.Type);
             var source = DescribeSource(backupFilePath);
 
-            await RestoreIntoAsync(provider, target, target.Database, source, cancellationToken);
+            await RestoreIntoAsync(target, target.Database, source, cancellationToken);
 
             stopwatch.Stop();
             return new RestoreResult
@@ -90,7 +87,6 @@ public class RestoreOrchestrator
         var stopwatch = Stopwatch.StartNew();
         var restoreId = Guid.NewGuid().ToString("N")[..12];
         var checksumValid = false;
-        IRestoreProvider? provider = null;
         string? testDatabase = null;
         await using var operation = await HistoryOperationScope.BeginAsync(
             _historyService,
@@ -110,22 +106,21 @@ public class RestoreOrchestrator
 
             await using var targetLock = TargetLock.Acquire(_config.BackupDirectory, target.Name, "Verify");
 
-            provider = GetProvider(target.Type);
             var source = DescribeSource(backupFilePath);
-            testDatabase = provider.GenerateTestDatabaseName(target, restoreId);
+            testDatabase = PostgresCommands.TestDatabaseName(restoreId);
 
             await ExecuteCheckedAsync(
-                provider.BuildCreateDatabaseCommand(target, testDatabase),
+                PostgresCommands.CreateDatabase(target, testDatabase),
                 "Failed to create temporary database",
                 cancellationToken);
 
             string? validationOutput;
             try
             {
-                await RestoreIntoAsync(provider, target, testDatabase, source, cancellationToken);
+                await RestoreIntoAsync(target, testDatabase, source, cancellationToken);
 
                 using var validation = await _processExecutor.ExecuteAsync(
-                    provider.BuildValidationCommand(target, testDatabase), cancellationToken);
+                    PostgresCommands.CountUserTables(target, testDatabase), cancellationToken);
                 if (!validation.IsSuccess)
                 {
                     throw new InvalidOperationException(
@@ -135,7 +130,7 @@ public class RestoreOrchestrator
             }
             finally
             {
-                await TryDropDatabaseAsync(provider, target, testDatabase);
+                await TryDropDatabaseAsync(target, testDatabase);
                 testDatabase = null;
             }
 
@@ -156,8 +151,8 @@ public class RestoreOrchestrator
         {
             stopwatch.Stop();
 
-            if (provider is not null && testDatabase is not null)
-                await TryDropDatabaseAsync(provider, target, testDatabase);
+            if (testDatabase is not null)
+                await TryDropDatabaseAsync(target, testDatabase);
 
             var failureResult = new VerifyResult
             {
@@ -174,15 +169,7 @@ public class RestoreOrchestrator
         }
     }
 
-    private IRestoreProvider GetProvider(DatabaseType type)
-    {
-        if (!_providers.TryGetValue(type, out var provider))
-            throw new NotSupportedException($"No restore provider registered for database type '{type}'.");
-        return provider;
-    }
-
     private async Task RestoreIntoAsync(
-        IRestoreProvider provider,
         DatabaseTarget target,
         string destinationDatabase,
         RestoreSource source,
@@ -192,11 +179,11 @@ public class RestoreOrchestrator
 
         if (destinationDatabase.Equals(target.Database, StringComparison.Ordinal))
         {
-            foreach (var prepareCommand in provider.BuildDestructivePrepareCommands(target, source))
+            foreach (var prepareCommand in PostgresCommands.PrepareDestructiveRestore(target, source))
                 await ExecuteCheckedAsync(prepareCommand, "Failed to prepare database for restore", cancellationToken);
         }
 
-        var command = provider.BuildStdinRestoreCommand(target, destinationDatabase, source);
+        var command = PostgresCommands.Restore(target, destinationDatabase, source);
         using var result = await _processExecutor.ExecuteWithInputAsync(command, input, cancellationToken);
         if (!result.IsSuccess)
         {
@@ -213,12 +200,12 @@ public class RestoreOrchestrator
             throw new InvalidOperationException($"{errorPrefix} (exit code {result.ExitCode}): {result.StandardError}");
     }
 
-    private async Task TryDropDatabaseAsync(IRestoreProvider provider, DatabaseTarget target, string database)
+    private async Task TryDropDatabaseAsync(DatabaseTarget target, string database)
     {
         try
         {
             using var result = await _processExecutor.ExecuteAsync(
-                provider.BuildDropDatabaseCommand(target, database), CancellationToken.None);
+                PostgresCommands.DropDatabase(target, database), CancellationToken.None);
         }
         catch
         {

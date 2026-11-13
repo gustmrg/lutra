@@ -71,7 +71,7 @@ public sealed class HistoryAndRetentionTests
                 DurationMs = 1
             });
         }
-        var orchestrator = new BackupOrchestrator([], new NeverProcessExecutor(), history, config);
+        var orchestrator = new BackupOrchestrator(new NeverProcessExecutor(), history, config);
 
         var candidates = await orchestrator.PreviewCleanupAsync(target);
 
