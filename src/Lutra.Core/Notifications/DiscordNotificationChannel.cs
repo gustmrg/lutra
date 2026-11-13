@@ -80,6 +80,8 @@ public sealed class DiscordNotificationChannel : INotificationChannel
                 fields.Add(Field("Size", FormatBytes(detail.FileSizeBytes.Value), true));
             if (!string.IsNullOrWhiteSpace(detail.Destination))
                 fields.Add(Field("Destination", detail.Destination));
+            if (!string.IsNullOrWhiteSpace(detail.Warning))
+                fields.Add(Field("Warning", detail.Warning));
         }
         else
         {

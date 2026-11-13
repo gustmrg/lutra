@@ -113,9 +113,19 @@ public class YamlConfigLoader : IConfigLoader
                 continue;
 
             var key = trimmed[..separatorIndex].Trim();
-            var value = trimmed[(separatorIndex + 1)..].Trim();
+            var value = Unquote(trimmed[(separatorIndex + 1)..].Trim());
             Environment.SetEnvironmentVariable(key, value);
         }
+    }
+
+    // KEY="value" and KEY='value' are the usual dotenv spellings; without this the
+    // quotes would become part of the password.
+    private static string Unquote(string value)
+    {
+        var quoted = value.Length >= 2
+            && value[0] is '"' or '\''
+            && value[^1] == value[0];
+        return quoted ? value[1..^1] : value;
     }
 
     private static void Validate(BackupConfig config)
@@ -140,7 +150,7 @@ public class YamlConfigLoader : IConfigLoader
             if (string.IsNullOrWhiteSpace(db.Name))
                 throw new ConfigurationException($"{prefix}: 'name' is required.");
             if (!IsSafeName(db.Name))
-                throw new ConfigurationException($"{prefix} ({db.Name}): 'name' cannot contain path separators.");
+                throw new ConfigurationException($"{prefix} ({db.Name}): 'name' is used as a directory name; it cannot be '.' or '..' or contain path separators.");
             if (!targetNames.Add(db.Name))
                 throw new ConfigurationException($"{prefix} ({db.Name}): duplicate target name.");
             if (string.IsNullOrWhiteSpace(db.Container))
@@ -205,7 +215,7 @@ public class YamlConfigLoader : IConfigLoader
 
     private static bool IsSafeName(string value)
     {
-        return !value.Contains('/') && !value.Contains('\\');
+        return value is not ("." or "..") && !value.Contains('/') && !value.Contains('\\');
     }
 
     private static bool LooksLikeCronExpression(string value)

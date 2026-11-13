@@ -91,13 +91,16 @@ public class BackupOrchestrator
                 ManifestFileName: Path.GetFileName(BackupIntegrity.GetManifestPath(finalFilePath)),
                 DurationMs: (long)stopwatch.Elapsed.TotalMilliseconds));
 
+            // A retention failure must not turn a completed, recorded backup into a
+            // failed one, but it has to be visible: old backups piling up fill the disk.
+            string? warning = null;
             try
             {
                 await ApplyRetentionAsync(target, dryRun: false, cancellationToken);
             }
-            catch
+            catch (Exception ex)
             {
-                // A retention failure should not turn a completed, recorded backup into a failed backup.
+                warning = $"Retention cleanup failed: {ex.Message}";
             }
 
             return new BackupResult
@@ -108,7 +111,8 @@ public class BackupOrchestrator
                 Duration = stopwatch.Elapsed,
                 FilePath = finalFilePath,
                 FileSizeBytes = fileInfo.Length,
-                Sha256 = sha256
+                Sha256 = sha256,
+                Warning = warning
             };
         }
         catch (Exception ex)

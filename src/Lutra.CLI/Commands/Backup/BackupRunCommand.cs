@@ -117,6 +117,9 @@ public sealed class BackupRunCommand : AsyncCommand<TargetSettings>
 
         AnsiConsole.Write(table);
 
+        foreach (var result in results.Where(result => result.Warning is not null))
+            AnsiConsole.MarkupLine($"[yellow]{result.TargetName.EscapeMarkup()}:[/] {result.Warning!.EscapeMarkup()}");
+
         var successCount = results.Count(r => r.Success);
         var failCount = results.Count - successCount;
 

@@ -10,4 +10,10 @@ public record BackupResult
     public long? FileSizeBytes { get; init; }
     public string? Sha256 { get; init; }
     public string? ErrorMessage { get; init; }
+
+    /// <summary>
+    /// Gets a problem that did not fail the backup but needs attention, such as
+    /// retention cleanup failing after the artifact was written.
+    /// </summary>
+    public string? Warning { get; init; }
 }
