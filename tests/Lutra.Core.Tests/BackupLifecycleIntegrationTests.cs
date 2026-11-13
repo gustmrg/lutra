@@ -2,6 +2,7 @@ using Lutra.Core.Backup;
 using Lutra.Core.Configuration;
 using Lutra.Core.History;
 using Lutra.Core.Persistence;
+using Lutra.Core.Processes;
 using Lutra.Core.Restore;
 
 namespace Lutra.Core.Tests;
@@ -132,37 +133,26 @@ public sealed class BackupLifecycleIntegrationTests
         => new(new LutraDatabase(
             config.StateDirectory!, config.ConfigPath!));
 
-    private sealed class BlockingProcessExecutor : IProcessExecutor
+    private sealed class BlockingProcessExecutor : IProcessRunner
     {
         public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        public async Task<ProcessResult> ExecuteAsync(
-            DockerExecCommand command,
+        public async Task<ProcessOutcome> RunAsync(
+            ProcessRequest request,
             CancellationToken cancellationToken = default)
         {
             Started.TrySetResult();
             await Release.Task.WaitAsync(cancellationToken);
-            return new ProcessResult(0, new MemoryStream("backup"u8.ToArray()), "");
+            await request.Output!.WriteAsync("backup"u8.ToArray(), cancellationToken);
+            return new ProcessOutcome(0, "", "");
         }
-
-        public Task<ProcessResult> ExecuteWithInputAsync(
-            DockerExecCommand command,
-            Stream input,
-            CancellationToken cancellationToken = default)
-            => throw new InvalidOperationException("Not expected.");
     }
 
-    private sealed class NeverProcessExecutor : IProcessExecutor
+    private sealed class NeverProcessExecutor : IProcessRunner
     {
-        public Task<ProcessResult> ExecuteAsync(
-            DockerExecCommand command,
-            CancellationToken cancellationToken = default)
-            => throw new InvalidOperationException("Not expected.");
-
-        public Task<ProcessResult> ExecuteWithInputAsync(
-            DockerExecCommand command,
-            Stream input,
+        public Task<ProcessOutcome> RunAsync(
+            ProcessRequest request,
             CancellationToken cancellationToken = default)
             => throw new InvalidOperationException("Not expected.");
     }

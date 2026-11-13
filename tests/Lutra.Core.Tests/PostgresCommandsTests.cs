@@ -20,6 +20,12 @@ public sealed class PostgresCommandsTests
             Assert.Contains("-Fc", command.Arguments);
             Assert.DoesNotContain("secret", command.Arguments);
             Assert.Equal("secret", command.EnvironmentVariables!["PGPASSWORD"]);
+
+            var request = command.ToProcessRequest();
+            Assert.Equal("docker", request.FileName);
+            Assert.DoesNotContain(request.Arguments, argument => argument.Contains("secret"));
+            Assert.Equal(["exec", "-e", "PGPASSWORD", "postgres", "pg_dump"], request.Arguments.Take(5));
+            Assert.Equal("secret", request.Environment!["PGPASSWORD"]);
         }
         finally
         {

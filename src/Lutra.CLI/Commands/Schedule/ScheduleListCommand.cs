@@ -1,5 +1,5 @@
-using System.Diagnostics;
 using System.Runtime.InteropServices;
+using Lutra.Core.Processes;
 using Spectre.Console;
 using Spectre.Console.Cli;
 
@@ -85,30 +85,7 @@ public sealed class ScheduleListCommand : AsyncCommand<CommandSettings>
 
     private static async Task<string> RunSystemctlCapture(params string[] args)
     {
-        try
-        {
-            var psi = new ProcessStartInfo("systemctl")
-            {
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
-
-            foreach (var arg in args)
-                psi.ArgumentList.Add(arg);
-
-            using var process = Process.Start(psi);
-            if (process is null)
-                return "unknown";
-
-            var output = await process.StandardOutput.ReadToEndAsync();
-            await process.WaitForExitAsync();
-            return output.Trim();
-        }
-        catch
-        {
-            return "unknown";
-        }
+        var outcome = await new SystemProcessRunner().RunAsync(new ProcessRequest("systemctl", args));
+        return outcome.ExitCode == -1 ? "unknown" : outcome.StandardOutput.Trim();
     }
 }

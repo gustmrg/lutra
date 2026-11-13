@@ -4,6 +4,7 @@ using Lutra.Core.Backup;
 using Lutra.Core.Configuration;
 using Lutra.Core.History;
 using Lutra.Core.Postgres;
+using Lutra.Core.Processes;
 
 namespace Lutra.Core.Restore;
 
@@ -13,16 +14,16 @@ namespace Lutra.Core.Restore;
 /// </summary>
 public class RestoreOrchestrator
 {
-    private readonly IProcessExecutor _processExecutor;
+    private readonly IProcessRunner _processes;
     private readonly IBackupHistoryService _historyService;
     private readonly BackupConfig _config;
 
     public RestoreOrchestrator(
-        IProcessExecutor processExecutor,
+        IProcessRunner processes,
         IBackupHistoryService historyService,
         BackupConfig config)
     {
-        _processExecutor = processExecutor;
+        _processes = processes;
         _historyService = historyService;
         _config = config;
     }
@@ -119,14 +120,14 @@ public class RestoreOrchestrator
             {
                 await RestoreIntoAsync(target, testDatabase, source, cancellationToken);
 
-                using var validation = await _processExecutor.ExecuteAsync(
-                    PostgresCommands.CountUserTables(target, testDatabase), cancellationToken);
+                var validation = await _processes.RunAsync(
+                    PostgresCommands.CountUserTables(target, testDatabase).ToProcessRequest(), cancellationToken);
                 if (!validation.IsSuccess)
                 {
                     throw new InvalidOperationException(
                         $"Validation query failed (exit code {validation.ExitCode}): {validation.StandardError}");
                 }
-                validationOutput = await ReadOutputAsync(validation, cancellationToken);
+                validationOutput = validation.StandardOutput;
             }
             finally
             {
@@ -184,7 +185,7 @@ public class RestoreOrchestrator
         }
 
         var command = PostgresCommands.Restore(target, destinationDatabase, source);
-        using var result = await _processExecutor.ExecuteWithInputAsync(command, input, cancellationToken);
+        var result = await _processes.RunAsync(command.ToProcessRequest(input), cancellationToken);
         if (!result.IsSuccess)
         {
             throw new InvalidOperationException(
@@ -195,7 +196,7 @@ public class RestoreOrchestrator
     private async Task ExecuteCheckedAsync(
         DockerExecCommand command, string errorPrefix, CancellationToken cancellationToken)
     {
-        using var result = await _processExecutor.ExecuteAsync(command, cancellationToken);
+        var result = await _processes.RunAsync(command.ToProcessRequest(), cancellationToken);
         if (!result.IsSuccess)
             throw new InvalidOperationException($"{errorPrefix} (exit code {result.ExitCode}): {result.StandardError}");
     }
@@ -204,8 +205,8 @@ public class RestoreOrchestrator
     {
         try
         {
-            using var result = await _processExecutor.ExecuteAsync(
-                PostgresCommands.DropDatabase(target, database), CancellationToken.None);
+            await _processes.RunAsync(
+                PostgresCommands.DropDatabase(target, database).ToProcessRequest(), CancellationToken.None);
         }
         catch
         {
@@ -271,12 +272,6 @@ public class RestoreOrchestrator
         return source.IsCompressed
             ? new GZipStream(fileStream, CompressionMode.Decompress)
             : fileStream;
-    }
-
-    private static async Task<string> ReadOutputAsync(ProcessResult result, CancellationToken cancellationToken)
-    {
-        using var reader = new StreamReader(result.OutputStream);
-        return await reader.ReadToEndAsync(cancellationToken);
     }
 
     private static string? BuildValidationDetails(string? validationOutput)
