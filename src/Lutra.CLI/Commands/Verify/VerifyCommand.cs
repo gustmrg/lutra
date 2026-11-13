@@ -61,7 +61,7 @@ public sealed class VerifyCommand : AsyncCommand<VerifySettings>
 
             var orchestrator = ServiceFactory.CreateRestoreOrchestrator(config);
             var result = await AnsiConsole.Status()
-                .StartAsync("Verifying backup...", _ => orchestrator.TestRestoreAsync(target, backupFile));
+                .StartAsync("Verifying backup...", _ => orchestrator.TestRestoreAsync(target, backupFile, AppCancellation.Token));
 
             await NotificationConsole.SendAsync(
                 config,

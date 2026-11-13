@@ -6,6 +6,7 @@ using Lutra.CLI.Commands.Restore;
 using Lutra.CLI.Commands.Schedule;
 using Lutra.CLI.Commands.Sync;
 using Lutra.CLI.Commands.Verify;
+using Lutra.CLI.Infrastructure;
 using System.Reflection;
 using Spectre.Console.Cli;
 
@@ -78,5 +79,7 @@ app.Configure(config =>
             .WithDescription("List installed Lutra systemd timer units and their status.");
     });
 });
+
+using var signals = AppCancellation.Register();
 
 return app.Run(args);

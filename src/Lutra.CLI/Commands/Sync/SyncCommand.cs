@@ -21,7 +21,7 @@ public sealed class SyncCommand : AsyncCommand<SyncSettings>
             if (settings.ValidateOnly)
             {
                 var validation = await AnsiConsole.Status()
-                    .StartAsync("Validating offsite sync...", _ => service.ValidateAsync());
+                    .StartAsync("Validating offsite sync...", _ => service.ValidateAsync(AppCancellation.Token));
                 AnsiConsole.MarkupLine(validation.Success
                     ? $"[green]Sync validation passed:[/] {validation.Message.EscapeMarkup()}"
                     : $"[red]Sync validation failed:[/] {validation.Message.EscapeMarkup()}");
@@ -30,7 +30,7 @@ public sealed class SyncCommand : AsyncCommand<SyncSettings>
 
             var result = await AnsiConsole.Status()
                 .StartAsync(settings.DryRun ? "Previewing offsite sync..." : "Syncing backups offsite...", _ =>
-                    service.SyncAsync(settings.Target, settings.DryRun, settings.Delete));
+                    service.SyncAsync(settings.Target, settings.DryRun, settings.Delete, AppCancellation.Token));
 
             if (!string.IsNullOrWhiteSpace(result.Output))
                 AnsiConsole.WriteLine(result.Output.TrimEnd());

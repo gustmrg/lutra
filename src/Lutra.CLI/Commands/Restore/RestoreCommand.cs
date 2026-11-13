@@ -96,7 +96,7 @@ public sealed class RestoreCommand : AsyncCommand<RestoreSettings>
 
         var result = await AnsiConsole.Status()
             .StartAsync($"Restoring {target.Name}...", async _ =>
-                await orchestrator.RestoreAsync(target, backupFile));
+                await orchestrator.RestoreAsync(target, backupFile, AppCancellation.Token));
 
         await NotifyRestoreAsync(config, target.Name, result.Success);
 
