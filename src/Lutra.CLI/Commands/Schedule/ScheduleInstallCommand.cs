@@ -3,120 +3,104 @@ using Lutra.CLI.Commands.Config;
 using Lutra.CLI.Infrastructure;
 using Lutra.Core.Configuration;
 using Spectre.Console;
-using Spectre.Console.Cli;
 
 namespace Lutra.CLI.Commands.Schedule;
 
-public sealed class ScheduleInstallCommand : AsyncCommand<TargetSettings>
+public sealed class ScheduleInstallCommand : LutraCommand<TargetSettings>
 {
     private const string SystemdDir = "/etc/systemd/system";
 
-    public override Task<int> ExecuteAsync(CommandContext context, TargetSettings settings)
+    protected override Task<int> RunAsync(TargetSettings settings)
     {
-        try
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
         {
-            if (!RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
-            {
-                AnsiConsole.MarkupLine("[red]Systemd timers are only supported on Linux.[/]");
-                return Task.FromResult(1);
-            }
-
-            if (!Directory.Exists(SystemdDir))
-            {
-                AnsiConsole.MarkupLine($"[red]Systemd directory not found:[/] {SystemdDir}");
-                return Task.FromResult(1);
-            }
-
-            var config = ServiceFactory.LoadConfig(settings);
-            var lutraPath = Environment.ProcessPath ?? "lutra";
-            var (resolvedConfigPath, resolvedEnvPath) = ConfigFileHelper.ResolvePaths(
-                settings.ConfigPath,
-                settings.EnvFilePath);
-
-            var targets = settings.Target is not null
-                ? new List<DatabaseTarget> { ServiceFactory.ResolveTarget(config, settings.Target) }
-                : config.Databases.ToList();
-
-            foreach (var target in targets)
-            {
-                var unitName = $"lutra-backup-{target.Name}";
-                InstallUnit(unitName, target, lutraPath, resolvedConfigPath, resolvedEnvPath);
-                AnsiConsole.MarkupLine($"  [green]Installed[/] {unitName}.timer ({target.Schedule.EscapeMarkup()})");
-
-                if (target.VerifySchedule is not null)
-                {
-                    InstallVerifyUnit(target, lutraPath, resolvedConfigPath, resolvedEnvPath);
-                    AnsiConsole.MarkupLine($"  [green]Installed[/] lutra-verify-{target.Name}.timer ({target.VerifySchedule.EscapeMarkup()})");
-                }
-            }
-
-            AnsiConsole.MarkupLine($"\nRun [blue]sudo systemctl daemon-reload[/] to load the new units.");
-            AnsiConsole.MarkupLine("Enable timers with [blue]sudo systemctl enable --now <unit>.timer[/]");
-            return Task.FromResult(0);
-        }
-        catch (ConfigurationException ex)
-        {
-            AnsiConsole.MarkupLine($"[red]Configuration error:[/] {ex.Message.EscapeMarkup()}");
+            AnsiConsole.MarkupLine("[red]Systemd timers are only supported on Linux.[/]");
             return Task.FromResult(1);
         }
-        catch (UnauthorizedAccessException)
+
+        if (!Directory.Exists(SystemdDir))
         {
-            AnsiConsole.MarkupLine("[red]Permission denied.[/] Run this command as root (sudo).");
+            AnsiConsole.MarkupLine($"[red]Systemd directory not found:[/] {SystemdDir}");
             return Task.FromResult(1);
         }
+
+        var config = ServiceFactory.LoadConfig(settings);
+        var (configPath, envPath) = ConfigFileHelper.ResolvePaths(settings.ConfigPath, settings.EnvFilePath);
+        string[] commonArguments =
+        [
+            "--config", Path.GetFullPath(configPath),
+            "--env-file", Path.GetFullPath(envPath)
+        ];
+
+        List<DatabaseTarget> targets = settings.Target is not null
+            ? [ServiceFactory.ResolveTarget(config, settings.Target)]
+            : config.Databases;
+
+        foreach (var target in targets)
+        {
+            InstallUnit(
+                $"lutra-backup-{target.Name}",
+                $"Lutra backup for {target.Name}",
+                target.Schedule,
+                ["backup", "run", "--target", target.Name, .. commonArguments]);
+
+            if (target.VerifySchedule is not null)
+            {
+                InstallUnit(
+                    $"lutra-verify-{target.Name}",
+                    $"Lutra restore drill for {target.Name}",
+                    target.VerifySchedule,
+                    ["verify", "--target", target.Name, .. commonArguments]);
+            }
+        }
+
+        AnsiConsole.MarkupLine($"\nRun [blue]sudo systemctl daemon-reload[/] to load the new units.");
+        AnsiConsole.MarkupLine("Enable timers with [blue]sudo systemctl enable --now <unit>.timer[/]");
+        return Task.FromResult(0);
     }
 
-    private static void InstallVerifyUnit(
-        DatabaseTarget target, string lutraPath, string configPath, string envFilePath)
+    private static void InstallUnit(string unitName, string description, string schedule, string[] arguments)
     {
-        var unitName = $"lutra-verify-{target.Name}";
-        var serviceContent = $"""
+        string[] commandLine = [Environment.ProcessPath ?? "lutra", .. arguments];
+        var command = string.Join(' ', commandLine.Select(Quote));
+
+        File.WriteAllText(Path.Combine(SystemdDir, $"{unitName}.service"), $"""
             [Unit]
-            Description=Lutra restore drill for {target.Name}
+            Description={description}
 
             [Service]
             Type=oneshot
-            ExecStart={lutraPath} verify --target {target.Name} --config {configPath} --env-file {envFilePath}
-            """;
-        var timerContent = $"""
+            ExecStart={command}
+            """);
+
+        File.WriteAllText(Path.Combine(SystemdDir, $"{unitName}.timer"), $"""
             [Unit]
-            Description=Lutra restore drill timer for {target.Name}
+            Description={description} (timer)
 
             [Timer]
-            OnCalendar={target.VerifySchedule}
+            OnCalendar={schedule}
             Persistent=true
 
             [Install]
             WantedBy=timers.target
-            """;
-        File.WriteAllText(Path.Combine(SystemdDir, $"{unitName}.service"), serviceContent);
-        File.WriteAllText(Path.Combine(SystemdDir, $"{unitName}.timer"), timerContent);
+            """);
+
+        AnsiConsole.MarkupLine($"  [green]Installed[/] {unitName}.timer ({schedule.EscapeMarkup()})");
     }
 
-    private static void InstallUnit(string unitName, DatabaseTarget target, string lutraPath, string configPath, string envFilePath)
+    // systemd splits ExecStart on whitespace and expands % and $ sequences, so an
+    // argument with any character outside the plain set is quoted and escaped.
+    private static string Quote(string argument)
     {
-        var serviceContent = $"""
-            [Unit]
-            Description=Lutra backup for {target.Name}
+        const string plain = "/._-:@+=,";
+        if (argument.Length > 0 && argument.All(c => char.IsAsciiLetterOrDigit(c) || plain.Contains(c)))
+            return argument;
 
-            [Service]
-            Type=oneshot
-            ExecStart={lutraPath} backup run --target {target.Name} --config {configPath} --env-file {envFilePath}
-            """;
-
-        var timerContent = $"""
-            [Unit]
-            Description=Lutra backup timer for {target.Name}
-
-            [Timer]
-            OnCalendar={target.Schedule}
-            Persistent=true
-
-            [Install]
-            WantedBy=timers.target
-            """;
-
-        File.WriteAllText(Path.Combine(SystemdDir, $"{unitName}.service"), serviceContent);
-        File.WriteAllText(Path.Combine(SystemdDir, $"{unitName}.timer"), timerContent);
+        var escaped = argument
+            .Replace("\\", "\\\\")
+            .Replace("\"", "\\\"")
+            .Replace("%", "%%")
+            .Replace("$", "$$");
+        return $"\"{escaped}\"";
     }
 }
