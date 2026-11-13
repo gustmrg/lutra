@@ -2,7 +2,7 @@
 
 ## How It Works
 
-Lutra runs on the VPS alongside your containers. It does not connect to databases over the network. It runs `pg_dump` inside the container with `docker exec`, streams the output to disk, optionally compresses it, and records the result in the local `lutra.db` application database. systemd timers handle scheduling.
+Lutra runs on the VPS alongside your containers. It does not connect to databases over the network. It runs `pg_dump` inside the container with `docker exec`, streams the output through compression and checksumming straight to disk, and records the result in the local `lutra.db` application database. systemd timers handle scheduling.
 
 Dumps use the PostgreSQL custom format (`.dump`) by default, or plain SQL (`.sql`) with `format: plain`.
 
@@ -28,6 +28,8 @@ Application state is stored separately at `<state_directory>/lutra.db` (normally
 
 `lutra.db`, `lutra.db-wal`, and `lutra.db-shm` are local operational state, not backup artifacts. They must remain on a local filesystem and be accessed by the same OS account for manual and scheduled commands. NFS and multi-host shared state directories are unsupported because WAL requires local coordination. Independent custom configurations must use distinct `state_directory` values.
 
+Stopping Lutra with Ctrl+C or `systemctl stop` cancels the running operation: the `docker exec` child is killed, the temporary file is removed, and the history row is closed as `Cancelled`. The command exits with code `130` if it had not yet produced a result.
+
 History rows are created before work starts. Backup, verify, and sync operations therefore appear as `Creating`, `Verifying`, or `Uploading`, then transition to `Succeeded`, `Failed`, or `Cancelled`. A process that dies leaves a lease; after expiry, the next history access marks it `Interrupted`. Interrupted means completion was not confirmed, but a finalized backup artifact is retained for reconciliation.
 
 Losing the state directory loses local history and in-flight operation state. It does not invalidate or delete backup artifacts, manifests, or checksums. `lutra backup reconcile` can identify artifacts without records, but automatic history reconstruction is not currently supported.
@@ -38,7 +40,7 @@ Use `lutra backup verify-file --file <PATH>` to verify an artifact against its s
 
 ## Retention
 
-The default `mode: both` is conservative: a backup is deleted only when both its count and age limits are exceeded. Set `mode: either` to delete when either limit matches. `keep_at_least` always protects the newest successful backups. Per-target settings override global defaults.
+The default `mode: both` is conservative: a backup is deleted only when both its count and age limits are exceeded. Set `mode: either` to delete when either limit matches. `keep_at_least` always protects the newest successful backups. Per-target settings override global defaults. If retention cleanup fails after a backup, the backup still succeeds and the failure is shown as a warning on the console and in the Discord message.
 
 Retention applies to the local backup directory. The sync destination keeps every file it has received unless `sync.delete` is enabled or `lutra sync --delete` is run.
 
@@ -52,7 +54,11 @@ Retention applies to the local backup directory. The sync destination keeps ever
 lutra restore --target my-postgres --file /var/backups/lutra/my-postgres/latest.dump.gz
 ```
 
+Before anything is changed, restore checks the backup against its `.sha256` sidecar and requires its `.json` manifest. If the checksum does not match or a sidecar is missing, it stops and leaves the database alone. A backup copied from another machine needs both sidecar files beside it.
+
 Custom-format dumps are restored with `pg_restore --clean --if-exists`. Plain-format dumps drop and recreate the database, then load with `psql`.
+
+Restores are not written to `lutra history`. They are reported on the console, in the systemd journal when run from a unit, and through Discord when notifications are configured.
 
 ## Verify
 
