@@ -4,9 +4,9 @@ using Spectre.Console.Cli;
 
 namespace Lutra.CLI.Commands.Backup;
 
-public sealed class BackupVerifyFileCommand : AsyncCommand<BackupVerifyFileSettings>
+public sealed class BackupVerifyFileCommand : LutraCommand<BackupVerifyFileSettings>
 {
-    public override async Task<int> ExecuteAsync(CommandContext context, BackupVerifyFileSettings settings)
+    protected override async Task<int> RunAsync(BackupVerifyFileSettings settings)
     {
         var filePath = settings.FilePath!;
         var result = await BackupIntegrity.VerifyFileAsync(filePath);

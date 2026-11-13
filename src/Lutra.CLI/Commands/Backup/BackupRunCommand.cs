@@ -7,77 +7,64 @@ using Spectre.Console.Cli;
 
 namespace Lutra.CLI.Commands.Backup;
 
-public sealed class BackupRunCommand : AsyncCommand<TargetSettings>
+public sealed class BackupRunCommand : LutraCommand<TargetSettings>
 {
-    public override async Task<int> ExecuteAsync(CommandContext context, TargetSettings settings)
+    protected override async Task<int> RunAsync(TargetSettings settings)
     {
-        try
+        var config = ServiceFactory.LoadConfig(settings);
+        var orchestrator = ServiceFactory.CreateOrchestrator(config);
+
+        IReadOnlyList<BackupResult> results;
+
+        if (settings.Target is not null)
         {
-            var config = ServiceFactory.LoadConfig(settings);
-            var orchestrator = ServiceFactory.CreateOrchestrator(config);
+            var target = ServiceFactory.ResolveTarget(config, settings.Target);
+            var result = await AnsiConsole.Status()
+                .StartAsync($"Backing up {target.Name}...", _ => orchestrator.BackupAsync(target, AppCancellation.Token));
 
-            IReadOnlyList<BackupResult> results;
+            results = [result];
+        }
+        else
+        {
+            results = await AnsiConsole.Status()
+                .StartAsync("Running backups for all targets...", async _ =>
+                    await orchestrator.BackupAllAsync(AppCancellation.Token));
+        }
 
-            if (settings.Target is not null)
-            {
-                var target = ServiceFactory.ResolveTarget(config, settings.Target);
-                var result = await AnsiConsole.Status()
-                    .StartAsync($"Backing up {target.Name}...", _ => orchestrator.BackupAsync(target, AppCancellation.Token));
+        PrintResults(results);
 
-                results = [result];
-            }
+        var success = results.All(result => result.Success);
+        await NotificationConsole.SendAsync(
+            config,
+            success ? "backup_success" : "backup_failure",
+            success,
+            success
+                ? $"{results.Count} backup(s) completed successfully."
+                : $"{results.Count(result => !result.Success)} of {results.Count} backup(s) failed.",
+            settings.Target,
+            BackupNotificationMapper.Map(results, config));
+
+        var syncSucceeded = true;
+        if (results.All(result => result.Success) && config.Sync is { PostBackup: true })
+        {
+            var sync = await AnsiConsole.Status()
+                .StartAsync("Syncing completed backups offsite...", _ =>
+                    ServiceFactory.CreateRsyncService(config).SyncAsync(settings.Target, dryRun: false, delete: false, AppCancellation.Token));
+            syncSucceeded = sync.Success;
+            if (sync.Success)
+                AnsiConsole.MarkupLine("[green]Post-backup offsite sync completed.[/]");
             else
-            {
-                results = await AnsiConsole.Status()
-                    .StartAsync("Running backups for all targets...", async _ =>
-                        await orchestrator.BackupAllAsync(AppCancellation.Token));
-            }
+                AnsiConsole.MarkupLine($"[red]Post-backup offsite sync failed:[/] {sync.ErrorMessage?.EscapeMarkup() ?? "Unknown error"}");
 
-            PrintResults(results);
-
-            var success = results.All(result => result.Success);
             await NotificationConsole.SendAsync(
                 config,
-                success ? "backup_success" : "backup_failure",
-                success,
-                success
-                    ? $"{results.Count} backup(s) completed successfully."
-                    : $"{results.Count(result => !result.Success)} of {results.Count} backup(s) failed.",
-                settings.Target,
-                BackupNotificationMapper.Map(results, config));
-
-            var syncSucceeded = true;
-            if (results.All(result => result.Success) && config.Sync is { PostBackup: true })
-            {
-                var sync = await AnsiConsole.Status()
-                    .StartAsync("Syncing completed backups offsite...", _ =>
-                        ServiceFactory.CreateRsyncService(config).SyncAsync(settings.Target, dryRun: false, delete: false, AppCancellation.Token));
-                syncSucceeded = sync.Success;
-                if (sync.Success)
-                    AnsiConsole.MarkupLine("[green]Post-backup offsite sync completed.[/]");
-                else
-                    AnsiConsole.MarkupLine($"[red]Post-backup offsite sync failed:[/] {sync.ErrorMessage?.EscapeMarkup() ?? "Unknown error"}");
-
-                await NotificationConsole.SendAsync(
-                    config,
-                    sync.Success ? "sync_success" : "sync_failure",
-                    sync.Success,
-                    sync.Success ? "Post-backup offsite sync succeeded." : "Post-backup offsite sync failed.",
-                    settings.Target);
-            }
-
-            return results.All(r => r.Success) && syncSucceeded ? 0 : 1;
+                sync.Success ? "sync_success" : "sync_failure",
+                sync.Success,
+                sync.Success ? "Post-backup offsite sync succeeded." : "Post-backup offsite sync failed.",
+                settings.Target);
         }
-        catch (ConfigurationException ex)
-        {
-            AnsiConsole.MarkupLine($"[red]Configuration error:[/] {ex.Message.EscapeMarkup()}");
-            return 1;
-        }
-        catch (Exception ex)
-        {
-            AnsiConsole.MarkupLine($"[red]Error:[/] {ex.Message.EscapeMarkup()}");
-            return 1;
-        }
+
+        return results.All(r => r.Success) && syncSucceeded ? 0 : 1;
     }
 
     private static void PrintResults(IReadOnlyList<BackupResult> results)
@@ -94,7 +81,7 @@ public sealed class BackupRunCommand : AsyncCommand<TargetSettings>
         {
             if (result.Success)
             {
-                var size = result.FileSizeBytes.HasValue ? FormatBytes(result.FileSizeBytes.Value) : "-";
+                var size = result.FileSizeBytes.HasValue ? BackupFileSelection.FormatBytes(result.FileSizeBytes.Value) : "-";
                 table.AddRow(
                     result.TargetName.EscapeMarkup(),
                     "[green]OK[/]",
@@ -127,18 +114,5 @@ public sealed class BackupRunCommand : AsyncCommand<TargetSettings>
             AnsiConsole.MarkupLine($"\n[green]{successCount} backup(s) completed successfully.[/]");
         else
             AnsiConsole.MarkupLine($"\n[yellow]{successCount} succeeded, {failCount} failed.[/]");
-    }
-
-    private static string FormatBytes(long bytes)
-    {
-        string[] suffixes = ["B", "KB", "MB", "GB"];
-        var order = 0;
-        var size = (double)bytes;
-        while (size >= 1024 && order < suffixes.Length - 1)
-        {
-            order++;
-            size /= 1024;
-        }
-        return $"{size:0.##} {suffixes[order]}";
     }
 }

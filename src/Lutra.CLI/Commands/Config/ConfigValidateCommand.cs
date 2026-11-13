@@ -8,62 +8,47 @@ using Spectre.Console.Cli;
 
 namespace Lutra.CLI.Commands.Config;
 
-public sealed class ConfigValidateCommand : AsyncCommand<ConfigValidateSettings>
+public sealed class ConfigValidateCommand : LutraCommand<ConfigValidateSettings>
 {
     private static readonly SystemProcessRunner Processes = new();
 
-    public override async Task<int> ExecuteAsync(CommandContext context, ConfigValidateSettings settings)
+    protected override async Task<int> RunAsync(ConfigValidateSettings settings)
     {
-        try
+        var config = ServiceFactory.LoadConfig(settings);
+
+        AnsiConsole.MarkupLine("[green]Configuration is valid.[/]");
+        AnsiConsole.MarkupLine($"  Backup directory: [blue]{config.BackupDirectory.EscapeMarkup()}[/]");
+        AnsiConsole.MarkupLine($"  State directory: [blue]{config.StateDirectory!.EscapeMarkup()}[/]");
+        if (config.UsesStateDirectoryCompatibilityFallback)
         {
-            var config = ServiceFactory.LoadConfig(settings);
-
-            AnsiConsole.MarkupLine("[green]Configuration is valid.[/]");
-            AnsiConsole.MarkupLine($"  Backup directory: [blue]{config.BackupDirectory.EscapeMarkup()}[/]");
-            AnsiConsole.MarkupLine($"  State directory: [blue]{config.StateDirectory!.EscapeMarkup()}[/]");
-            if (config.UsesStateDirectoryCompatibilityFallback)
-            {
-                AnsiConsole.MarkupLine(
-                    "[yellow]State directory compatibility fallback:[/] this custom configuration stores state " +
-                    "under the backup directory. Set an explicit absolute [blue]state_directory[/] to keep local state separate.");
-            }
-            AnsiConsole.MarkupLine($"  Retention: max_count={config.Retention.MaxCount}, max_age_days={config.Retention.MaxAgeDays}");
-            AnsiConsole.MarkupLine($"  Database targets: [blue]{config.Databases.Count}[/]");
-
-            foreach (var db in config.Databases)
-            {
-                AnsiConsole.MarkupLine($"    - {db.Name.EscapeMarkup()} ({db.Type}, container: {db.Container.EscapeMarkup()})");
-            }
-
-            if (config.Sync is { } sync)
-                AnsiConsole.MarkupLine($"  Offsite sync: [blue]{sync.User.EscapeMarkup()}@{sync.Host.EscapeMarkup()}:{sync.DestinationPath.EscapeMarkup()}[/]");
-
-            if (config.Notifications?.Discord is { } discord)
-                AnsiConsole.MarkupLine($"  Discord notifications: [blue]{discord.Webhooks.Count} webhook(s)[/]");
-
-            if (!CheckBackupDirectory(config.BackupDirectory))
-                return 1;
-
-            if (!CheckStateDatabase(config))
-                return 1;
-
-            if (settings.Preflight)
-                return await RunPreflightAsync(config);
-
-            return 0;
-        }
-        catch (ConfigurationException ex)
-        {
-            AnsiConsole.MarkupLine($"[red]Configuration error:[/] {ex.Message.EscapeMarkup()}");
-            return 1;
-        }
-        catch (LutraDatabaseOwnershipException ex)
-        {
-            AnsiConsole.MarkupLine($"[red]State ownership conflict:[/] {ex.Message.EscapeMarkup()}");
             AnsiConsole.MarkupLine(
-                "Use a distinct explicit [blue]state_directory[/] for this configuration; Lutra will not mix unrelated application state.");
-            return 1;
+                "[yellow]State directory compatibility fallback:[/] this custom configuration stores state " +
+                "under the backup directory. Set an explicit absolute [blue]state_directory[/] to keep local state separate.");
         }
+        AnsiConsole.MarkupLine($"  Retention: max_count={config.Retention.MaxCount}, max_age_days={config.Retention.MaxAgeDays}");
+        AnsiConsole.MarkupLine($"  Database targets: [blue]{config.Databases.Count}[/]");
+
+        foreach (var db in config.Databases)
+        {
+            AnsiConsole.MarkupLine($"    - {db.Name.EscapeMarkup()} ({db.Type}, container: {db.Container.EscapeMarkup()})");
+        }
+
+        if (config.Sync is { } sync)
+            AnsiConsole.MarkupLine($"  Offsite sync: [blue]{sync.User.EscapeMarkup()}@{sync.Host.EscapeMarkup()}:{sync.DestinationPath.EscapeMarkup()}[/]");
+
+        if (config.Notifications?.Discord is { } discord)
+            AnsiConsole.MarkupLine($"  Discord notifications: [blue]{discord.Webhooks.Count} webhook(s)[/]");
+
+        if (!CheckBackupDirectory(config.BackupDirectory))
+            return 1;
+
+        if (!CheckStateDatabase(config))
+            return 1;
+
+        if (settings.Preflight)
+            return await RunPreflightAsync(config);
+
+        return 0;
     }
 
     private static bool CheckStateDatabase(BackupConfig config)
@@ -77,9 +62,10 @@ public sealed class ConfigValidateCommand : AsyncCommand<ConfigValidateSettings>
             AnsiConsole.MarkupLine("  Application database: [green]writable (SQLite WAL)[/]");
             return true;
         }
-        catch (LutraDatabaseOwnershipException)
+        catch (LutraDatabaseOwnershipException ex)
         {
-            throw;
+            throw new ConfigurationException(
+                $"{ex.Message} Use a distinct explicit state_directory for this configuration.", ex);
         }
         catch (Exception ex) when (ex is SqliteException or IOException or UnauthorizedAccessException or InvalidOperationException)
         {
