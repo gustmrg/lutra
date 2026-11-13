@@ -46,9 +46,6 @@ public class RestoreOrchestrator
         {
             if (!File.Exists(backupFilePath))
                 throw new FileNotFoundException($"Backup file not found: {backupFilePath}");
-            if (target.Type == DatabaseType.SqlServer
-                && GetSqlServerBackupKind(backupFilePath) != SqlServerBackupKind.Full)
-                throw new InvalidOperationException("Differential and log backups must be restored with an ordered --chain beginning with a full backup.");
 
             await using var targetLock = TargetLock.Acquire(_config.BackupDirectory, target.Name, "Restore");
 
@@ -56,85 +53,6 @@ public class RestoreOrchestrator
             var source = DescribeSource(backupFilePath);
 
             await RestoreIntoAsync(provider, target, target.Database, source, cancellationToken);
-
-            stopwatch.Stop();
-            return new RestoreResult
-            {
-                TargetName = target.Name,
-                Success = true,
-                Duration = stopwatch.Elapsed,
-                DestinationDatabase = target.Database
-            };
-        }
-        catch (Exception ex)
-        {
-            stopwatch.Stop();
-            return new RestoreResult
-            {
-                TargetName = target.Name,
-                Success = false,
-                Duration = stopwatch.Elapsed,
-                DestinationDatabase = target.Database,
-                ErrorMessage = ex.Message
-            };
-        }
-    }
-
-    public async Task<RestoreResult> RestoreSqlServerChainAsync(
-        DatabaseTarget target,
-        IReadOnlyList<string> backupFiles,
-        CancellationToken cancellationToken = default)
-    {
-        var stopwatch = Stopwatch.StartNew();
-        try
-        {
-            if (target.Type != DatabaseType.SqlServer)
-                throw new InvalidOperationException("Restore chains are supported only for SQL Server targets.");
-            if (backupFiles.Count == 0)
-                throw new InvalidOperationException("At least one chain file is required.");
-
-            var kinds = backupFiles.Select(GetSqlServerBackupKind).ToList();
-            if (kinds[0] != SqlServerBackupKind.Full)
-                throw new InvalidOperationException("A SQL Server restore chain must begin with a full backup.");
-            if (kinds.Skip(1).Any(kind => kind == SqlServerBackupKind.Full)
-                || kinds.Count(kind => kind == SqlServerBackupKind.Differential) > 1
-                || kinds.SkipWhile(kind => kind != SqlServerBackupKind.Log).Any(kind => kind != SqlServerBackupKind.Log))
-                throw new InvalidOperationException("Chain order must be full, optional differential, then transaction logs.");
-
-            foreach (var path in backupFiles)
-            {
-                EnsureNotEncrypted(path);
-                var integrity = await BackupIntegrity.VerifyFileAsync(path, cancellationToken);
-                if (!integrity.Success)
-                    throw new InvalidOperationException($"Integrity check failed for '{Path.GetFileName(path)}': {integrity.Message}");
-            }
-
-            await using var targetLock = TargetLock.Acquire(_config.BackupDirectory, target.Name, "Restore chain");
-            var provider = (SqlServerRestoreProvider)GetProvider(DatabaseType.SqlServer);
-            for (var index = 0; index < backupFiles.Count; index++)
-            {
-                var source = DescribeSource(backupFiles[index]);
-                var containerPath = provider.GetContainerRestoreFilePath(target, Guid.NewGuid().ToString("N")[..12]);
-                try
-                {
-                    await using var input = OpenSourceStream(source);
-                    var uploadCommand = new DockerExecCommand(target.Container, "sh", ["-c", $"cat > '{containerPath}'"]);
-                    using (var upload = await _processExecutor.ExecuteWithInputAsync(uploadCommand, input, cancellationToken))
-                    {
-                        if (!upload.IsSuccess)
-                            throw new InvalidOperationException($"Failed to upload chain file: {upload.StandardError}");
-                    }
-                    await ExecuteCheckedAsync(
-                        provider.BuildChainRestoreCommand(
-                            target, containerPath, kinds[index], index == 0, index == backupFiles.Count - 1),
-                        $"Failed to restore chain file {Path.GetFileName(backupFiles[index])}", cancellationToken);
-                }
-                finally
-                {
-                    using var removed = await _processExecutor.ExecuteAsync(
-                        new DockerExecCommand(target.Container, "rm", ["-f", containerPath]), CancellationToken.None);
-                }
-            }
 
             stopwatch.Stop();
             return new RestoreResult
@@ -197,9 +115,10 @@ public class RestoreOrchestrator
             var source = DescribeSource(backupFilePath);
             testDatabase = provider.GenerateTestDatabaseName(target, restoreId);
 
-            var createCommand = provider.BuildCreateDatabaseCommand(target, testDatabase);
-            if (createCommand is not null)
-                await ExecuteCheckedAsync(createCommand, "Failed to create temporary database", cancellationToken);
+            await ExecuteCheckedAsync(
+                provider.BuildCreateDatabaseCommand(target, testDatabase),
+                "Failed to create temporary database",
+                cancellationToken);
 
             string? validationOutput;
             try
@@ -229,7 +148,7 @@ public class RestoreOrchestrator
                 ChecksumValid = checksumValid,
                 Success = true,
                 Duration = stopwatch.Elapsed,
-                ValidationDetails = BuildValidationDetails(provider.Type, validationOutput)
+                ValidationDetails = BuildValidationDetails(validationOutput)
             };
             await TryCompleteVerificationAsync(operation, backupFilePath, successResult);
             return successResult;
@@ -389,81 +308,18 @@ public class RestoreOrchestrator
     {
         await using var input = OpenSourceStream(source);
 
-        if (provider.ReadsFromStdin)
+        if (destinationDatabase.Equals(target.Database, StringComparison.Ordinal))
         {
-            if (destinationDatabase.Equals(target.Database, StringComparison.Ordinal))
-            {
-                foreach (var prepareCommand in provider.BuildDestructivePrepareCommands(target, source))
-                    await ExecuteCheckedAsync(prepareCommand, "Failed to prepare database for restore", cancellationToken);
-            }
-
-            var command = provider.BuildStdinRestoreCommand(target, destinationDatabase, source);
-            using var result = await _processExecutor.ExecuteWithInputAsync(command, input, cancellationToken);
-            if (!result.IsSuccess)
-            {
-                throw new InvalidOperationException(
-                    $"Restore command failed (exit code {result.ExitCode}): {result.StandardError}");
-            }
-            return;
+            foreach (var prepareCommand in provider.BuildDestructivePrepareCommands(target, source))
+                await ExecuteCheckedAsync(prepareCommand, "Failed to prepare database for restore", cancellationToken);
         }
 
-        // File-based restore (SQL Server): upload the backup into the container,
-        // restore from the container path, then remove the uploaded file.
-        var restoreId = Guid.NewGuid().ToString("N")[..12];
-        var containerPath = provider.GetContainerRestoreFilePath(target, restoreId);
-
-        try
+        var command = provider.BuildStdinRestoreCommand(target, destinationDatabase, source);
+        using var result = await _processExecutor.ExecuteWithInputAsync(command, input, cancellationToken);
+        if (!result.IsSuccess)
         {
-            var uploadCommand = new DockerExecCommand(
-                ContainerName: target.Container,
-                Command: "sh",
-                Arguments: ["-c", $"cat > '{containerPath}'"]);
-
-            using (var upload = await _processExecutor.ExecuteWithInputAsync(uploadCommand, input, cancellationToken))
-            {
-                if (!upload.IsSuccess)
-                {
-                    throw new InvalidOperationException(
-                        $"Failed to upload backup file into container: {upload.StandardError}");
-                }
-            }
-
-            IReadOnlyList<BackupFileEntry> backupFiles = [];
-            if (!destinationDatabase.Equals(target.Database, StringComparison.Ordinal))
-            {
-                var listCommand = provider.BuildListBackupFilesCommand(target, containerPath)
-                    ?? throw new NotSupportedException(
-                        "Restoring to a different database name is not supported by this provider.");
-
-                using var listResult = await _processExecutor.ExecuteAsync(listCommand, cancellationToken);
-                if (!listResult.IsSuccess)
-                {
-                    throw new InvalidOperationException(
-                        $"Failed to read backup file list (exit code {listResult.ExitCode}): {listResult.StandardError}");
-                }
-
-                var listOutput = await ReadOutputAsync(listResult, cancellationToken);
-                backupFiles = provider.ParseBackupFileList(listOutput);
-            }
-
-            var restoreCommand = provider.BuildContainerFileRestoreCommand(
-                target, containerPath, destinationDatabase, backupFiles);
-
-            using var restoreResult = await _processExecutor.ExecuteAsync(restoreCommand, cancellationToken);
-            if (!restoreResult.IsSuccess)
-            {
-                throw new InvalidOperationException(
-                    $"Restore command failed (exit code {restoreResult.ExitCode}): {restoreResult.StandardError}");
-            }
-        }
-        finally
-        {
-            var rmCommand = new DockerExecCommand(
-                ContainerName: target.Container,
-                Command: "rm",
-                Arguments: ["-f", containerPath]);
-
-            using var rmResult = await _processExecutor.ExecuteAsync(rmCommand, CancellationToken.None);
+            throw new InvalidOperationException(
+                $"Restore command failed (exit code {result.ExitCode}): {result.StandardError}");
         }
     }
 
@@ -526,18 +382,6 @@ public class RestoreOrchestrator
         }
     }
 
-    private static SqlServerBackupKind GetSqlServerBackupKind(string path)
-    {
-        var name = path.EndsWith(".age", StringComparison.OrdinalIgnoreCase) ? path[..^4] : path;
-        if (name.EndsWith(".log.bak", StringComparison.OrdinalIgnoreCase)
-            || name.EndsWith(".log.bak.gz", StringComparison.OrdinalIgnoreCase))
-            return SqlServerBackupKind.Log;
-        if (name.EndsWith(".diff.bak", StringComparison.OrdinalIgnoreCase)
-            || name.EndsWith(".diff.bak.gz", StringComparison.OrdinalIgnoreCase))
-            return SqlServerBackupKind.Differential;
-        return SqlServerBackupKind.Full;
-    }
-
     private static RestoreSource DescribeSource(string backupFilePath)
     {
         EnsureNotEncrypted(backupFilePath);
@@ -574,7 +418,7 @@ public class RestoreOrchestrator
         return await reader.ReadToEndAsync(cancellationToken);
     }
 
-    private static string? BuildValidationDetails(DatabaseType type, string? validationOutput)
+    private static string? BuildValidationDetails(string? validationOutput)
     {
         var firstLine = validationOutput?
             .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
@@ -583,13 +427,6 @@ public class RestoreOrchestrator
         if (string.IsNullOrEmpty(firstLine))
             return null;
 
-        return type switch
-        {
-            DatabaseType.PostgreSql => $"Restored database contains {firstLine} user tables.",
-            DatabaseType.SqlServer => $"Restored database contains {firstLine} tables.",
-            DatabaseType.MongoDb => $"Restored database contains {firstLine} collections.",
-            DatabaseType.SQLite => $"SQLite integrity check: {firstLine}.",
-            _ => firstLine
-        };
+        return $"Restored database contains {firstLine} user tables.";
     }
 }

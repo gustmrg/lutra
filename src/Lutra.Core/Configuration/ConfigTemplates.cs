@@ -104,7 +104,6 @@ retention:
 #   failure_streak_critical: 3     # Consecutive failures before critical alert
 
 databases:
-  # PostgreSQL Example
   - name: example-postgres
     type: postgresql
     container: postgres-container    # Docker container name
@@ -116,35 +115,6 @@ databases:
     # postgres_wal_archive_path: /srv/postgres-wal # archive_command output on host
     format: custom                   # custom (.dump) or plain (.sql)
     compression: gzip
-
-  # MongoDB Example
-  # - name: example-mongo
-  #   type: mongodb
-  #   container: mongo-container
-  #   database: mydb
-  #   schedule: "Sun *-*-* 04:00:00" # Weekly on Sundays at 4 AM
-  #   compression: gzip
-  #   # mongo_oplog: true             # replica-set-wide oplog-consistent archive
-
-  # SQL Server Example
-  # - name: example-sqlserver
-  #   type: sqlserver
-  #   container: sqlserver-container
-  #   database: MyDatabase
-  #   username: sa
-  #   password_env: SQLSERVER_PASSWORD
-  #   schedule: "*-*-* 02:00:00"    # Daily at 2 AM
-  #   compression: gzip
-  #   # sql_server_backup_kind: full  # full, differential, or log
-
-# SQLite databases use the path inside the configured container.
-# databases may also include:
-#   - name: app-sqlite
-#     type: sqlite
-#     container: app-container
-#     database: /data/app.db
-#     schedule: "*-*-* 02:30:00"
-#     compression: gzip
 
 # File targets back up configuration files as tar archives.
 # Use them for compose files, .env files, reverse proxy configs, and certificates.
@@ -171,14 +141,8 @@ databases:
 # Lutra Environment Variables
 # Store credentials here (never commit this file!)
 
-# Example PostgreSQL password
+# PostgreSQL password referenced by password_env in lutra.yaml
 POSTGRES_PASSWORD=your-secret-password-here
-
-# Example MongoDB password (if authentication is enabled)
-# MONGO_PASSWORD=your-mongo-password
-
-# Example SQL Server password
-# SQLSERVER_PASSWORD=your-sqlserver-password
 
 # Optional Discord incoming webhook URL (treat it as a credential)
 # LUTRA_DISCORD_WEBHOOK=https://discord.com/api/webhooks/replace-me

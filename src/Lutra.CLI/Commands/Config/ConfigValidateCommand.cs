@@ -147,24 +147,15 @@ public sealed class ConfigValidateCommand : AsyncCommand<ConfigValidateSettings>
                 continue;
             }
 
-            var tool = GetRequiredTool(db.Type);
-            if (!await CommandSucceedsAsync("docker", ["exec", db.Container, "sh", "-lc", $"command -v {tool} >/dev/null 2>&1"]))
+            if (!await CommandSucceedsAsync("docker", ["exec", db.Container, "sh", "-lc", "command -v pg_dump >/dev/null 2>&1"]))
             {
-                AnsiConsole.MarkupLine($"[red]{db.Name.EscapeMarkup()}:[/] required dump tool '{tool.EscapeMarkup()}' was not found in the container.");
+                AnsiConsole.MarkupLine($"[red]{db.Name.EscapeMarkup()}:[/] required dump tool 'pg_dump' was not found in the container.");
                 failed = true;
             }
             else
             {
                 AnsiConsole.MarkupLine($"  {db.Name.EscapeMarkup()}: [green]container and dump tool available[/]");
-                var versionArgs = db.Type switch
-                {
-                    DatabaseType.PostgreSql => new[] { "exec", db.Container, "pg_dump", "--version" },
-                    DatabaseType.MongoDb => new[] { "exec", db.Container, "mongodump", "--version" },
-                    DatabaseType.SqlServer => new[] { "exec", db.Container, "/opt/mssql-tools18/bin/sqlcmd", "-?" },
-                    DatabaseType.SQLite => new[] { "exec", db.Container, "sqlite3", "--version" },
-                    _ => []
-                };
-                var version = await CommandOutputAsync("docker", versionArgs);
+                var version = await CommandOutputAsync("docker", ["exec", db.Container, "pg_dump", "--version"]);
                 if (!string.IsNullOrWhiteSpace(version))
                     AnsiConsole.MarkupLine($"    Tool version: [grey]{version.Split('\n', StringSplitOptions.RemoveEmptyEntries)[0].Trim().EscapeMarkup()}[/]");
             }
@@ -329,15 +320,6 @@ public sealed class ConfigValidateCommand : AsyncCommand<ConfigValidateSettings>
 
         return ok;
     }
-
-    private static string GetRequiredTool(DatabaseType type) => type switch
-    {
-        DatabaseType.PostgreSql => "pg_dump",
-        DatabaseType.MongoDb => "mongodump",
-        DatabaseType.SqlServer => "/opt/mssql-tools18/bin/sqlcmd",
-        DatabaseType.SQLite => "sqlite3",
-        _ => throw new ArgumentOutOfRangeException(nameof(type), type, null)
-    };
 
     private static async Task<bool> CommandExistsAsync(string command)
     {

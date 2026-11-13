@@ -7,8 +7,6 @@ public class PostgresRestoreProvider : IRestoreProvider
 {
     public DatabaseType Type => DatabaseType.PostgreSql;
 
-    public bool ReadsFromStdin => true;
-
     public DockerExecCommand BuildStdinRestoreCommand(
         DatabaseTarget target,
         string destinationDatabase,
@@ -55,11 +53,11 @@ public class PostgresRestoreProvider : IRestoreProvider
         return
         [
             BuildDropDatabaseCommand(target, target.Database),
-            BuildCreateDatabaseCommand(target, target.Database)!
+            BuildCreateDatabaseCommand(target, target.Database)
         ];
     }
 
-    public DockerExecCommand? BuildCreateDatabaseCommand(DatabaseTarget target, string database)
+    public DockerExecCommand BuildCreateDatabaseCommand(DatabaseTarget target, string database)
     {
         var args = BaseArgs(target);
         args.Add("-d");

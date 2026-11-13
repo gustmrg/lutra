@@ -45,18 +45,8 @@ public class BackupOrchestrator
             target,
             provider.GetFileExtension(target),
             target.Compression,
-            async (tempFilePath, backupId, ct) =>
-            {
-                var command = provider.BuildDumpCommand(target, backupId);
-                if (provider.StreamsToStdout)
-                {
-                    await ExecuteStreamingBackup(command, tempFilePath, target.Compression, ct);
-                }
-                else
-                {
-                    await ExecuteFileBasedBackup(command, provider, target, backupId, tempFilePath, ct);
-                }
-            },
+            (tempFilePath, backupId, ct) => ExecuteStreamingBackup(
+                provider.BuildDumpCommand(target, backupId), tempFilePath, target.Compression, ct),
             (fileName, fileSize, sha256, startedAt, duration) => new BackupManifest
             {
                 TargetName = target.Name,
@@ -68,9 +58,7 @@ public class BackupOrchestrator
                 FileSizeBytes = fileSize,
                 Sha256 = sha256,
                 Compression = target.Compression,
-                Format = target.Type == DatabaseType.SqlServer
-                    ? target.SqlServerBackupKind.ToString().ToLowerInvariant()
-                    : target.MongoOplog ? "oplog" : target.Format,
+                Format = target.Format,
                 StartedAt = startedAt,
                 CompletedAt = DateTime.UtcNow,
                 DurationMs = (long)duration.TotalMilliseconds,
@@ -336,48 +324,6 @@ public class BackupOrchestrator
             throw new InvalidOperationException($"Backup command failed (exit code {result.ExitCode}): {result.StandardError}");
 
         await WriteStreamToFile(result.OutputStream, filePath, compression, cancellationToken);
-    }
-
-    private async Task ExecuteFileBasedBackup(
-        DockerExecCommand command, IBackupProvider provider, DatabaseTarget target,
-        string backupId, string filePath, CancellationToken cancellationToken)
-    {
-        // Step 1: Run the dump command (writes to a file inside the container)
-        using var dumpResult = await _processExecutor.ExecuteAsync(command, cancellationToken);
-
-        if (!dumpResult.IsSuccess)
-            throw new InvalidOperationException($"Backup command failed (exit code {dumpResult.ExitCode}): {dumpResult.StandardError}");
-
-        var containerPath = provider.GetContainerBackupPath(target, backupId)
-            ?? throw new InvalidOperationException("Provider does not stream to stdout but returned no container backup path.");
-
-        try
-        {
-            // Step 2: Stream the file out of the container via cat
-            var catCommand = new DockerExecCommand(
-                ContainerName: command.ContainerName,
-                Command: "cat",
-                Arguments: [containerPath]
-            );
-
-            using var catResult = await _processExecutor.ExecuteAsync(catCommand, cancellationToken);
-
-            if (!catResult.IsSuccess)
-                throw new InvalidOperationException($"Failed to extract backup file from container: {catResult.StandardError}");
-
-            await WriteStreamToFile(catResult.OutputStream, filePath, target.Compression, cancellationToken);
-        }
-        finally
-        {
-            // Step 3: Clean up the temp file inside the container
-            var rmCommand = new DockerExecCommand(
-                ContainerName: command.ContainerName,
-                Command: "rm",
-                Arguments: ["-f", containerPath]
-            );
-
-            using var rmResult = await _processExecutor.ExecuteAsync(rmCommand, cancellationToken);
-        }
     }
 
     private static async Task WriteStreamToFile(
