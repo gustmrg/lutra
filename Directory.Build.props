@@ -1,0 +1,12 @@
+<Project>
+
+    <!--
+        Releases take their version from the git tag: the release workflow passes
+        -p:Version, which overrides this value. Anything built without a tag
+        identifies itself as a development build.
+    -->
+    <PropertyGroup>
+        <Version>0.0.0-dev</Version>
+    </PropertyGroup>
+
+</Project>
