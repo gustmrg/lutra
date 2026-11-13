@@ -4,7 +4,6 @@ using Lutra.Core.Backup;
 using Lutra.Core.Configuration;
 using Lutra.Core.Health;
 using Lutra.Core.History;
-using Lutra.Core.Inventory;
 using Lutra.Core.Notifications;
 using Lutra.Core.Persistence;
 using Lutra.Core.Restore;
@@ -117,11 +116,6 @@ internal static class ServiceFactory
     public static RsyncService CreateRsyncService(BackupConfig config)
     {
         return new RsyncService(config, CreateHistoryService(config));
-    }
-
-    public static InventoryService CreateInventoryService(BackupConfig config)
-    {
-        return new InventoryService(config);
     }
 
     public static IBackupTarget ResolveTarget(BackupConfig config, string targetName)

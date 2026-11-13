@@ -35,7 +35,6 @@ public sealed class ScheduleRemoveCommand : AsyncCommand<ScheduleRemoveCommand.S
 
             var unitFiles = Directory.GetFiles(SystemdDir, "lutra-backup-*")
                 .Concat(Directory.GetFiles(SystemdDir, "lutra-verify-*"))
-                .Concat(Directory.GetFiles(SystemdDir, "lutra-inventory.*"))
                 .OrderBy(f => f)
                 .ToList();
 

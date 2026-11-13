@@ -25,7 +25,6 @@ public sealed class ScheduleListCommand : AsyncCommand<CommandSettings>
 
         var timerFiles = Directory.GetFiles(SystemdDir, "lutra-backup-*.timer")
             .Concat(Directory.GetFiles(SystemdDir, "lutra-verify-*.timer"))
-            .Concat(Directory.GetFiles(SystemdDir, "lutra-inventory.timer"))
             .OrderBy(f => f)
             .ToList();
 
@@ -44,10 +43,8 @@ public sealed class ScheduleListCommand : AsyncCommand<CommandSettings>
         foreach (var timerFile in timerFiles)
         {
             var fileName = Path.GetFileNameWithoutExtension(timerFile);
-            var targetName = fileName == "lutra-inventory"
-                ? "inventory"
-                : fileName.Replace("lutra-backup-", "", StringComparison.Ordinal)
-                    .Replace("lutra-verify-", "verify: ", StringComparison.Ordinal);
+            var targetName = fileName.Replace("lutra-backup-", "", StringComparison.Ordinal)
+                .Replace("lutra-verify-", "verify: ", StringComparison.Ordinal);
 
             var schedule = ParseOnCalendar(timerFile);
             var enabled = await RunSystemctlCapture("is-enabled", $"{fileName}.timer");

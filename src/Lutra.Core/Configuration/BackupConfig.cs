@@ -1,6 +1,5 @@
 using Lutra.Core.Encryption;
 using Lutra.Core.Health;
-using Lutra.Core.Inventory;
 using Lutra.Core.Notifications;
 using Lutra.Core.Sync;
 using YamlDotNet.Serialization;
@@ -71,11 +70,6 @@ public class BackupConfig
     public List<VolumeTarget> Volumes { get; init; } = [];
 
     public HealthConfig? Health { get; init; }
-
-    /// <summary>
-    /// Gets optional server inventory snapshot configuration.
-    /// </summary>
-    public InventoryConfig? Inventory { get; init; }
 
     /// <summary>Gets optional outbound notification settings.</summary>
     public NotificationConfig? Notifications { get; init; }
