@@ -4,60 +4,46 @@ using Spectre.Console.Cli;
 
 namespace Lutra.CLI.Commands.Config;
 
-public sealed class ConfigInitCommand : AsyncCommand<ConfigInitSettings>
+public sealed class ConfigInitCommand : LutraCommand<ConfigInitSettings>
 {
-    public override Task<int> ExecuteAsync(CommandContext context, ConfigInitSettings settings)
+    protected override Task<int> RunAsync(ConfigInitSettings settings)
     {
-        try
-        {
-            var (configPath, envFilePath) = ConfigFileHelper.ResolvePaths(
-                settings.ConfigPath,
-                settings.EnvFilePath);
-            var backupDirectory = ConfigTemplates.GetDefaultBackupDirectory();
-            var stateDirectory = ConfigTemplates.GetDefaultStateDirectory();
+        var (configPath, envFilePath) = ConfigFileHelper.ResolvePaths(
+            settings.ConfigPath,
+            settings.EnvFilePath);
+        var backupDirectory = ConfigTemplates.GetDefaultBackupDirectory();
+        var stateDirectory = ConfigTemplates.GetDefaultStateDirectory();
 
-            var configDir = Path.GetDirectoryName(Path.GetFullPath(configPath))!;
-            var envDir = Path.GetDirectoryName(Path.GetFullPath(envFilePath))!;
+        var configDir = Path.GetDirectoryName(Path.GetFullPath(configPath))!;
+        var envDir = Path.GetDirectoryName(Path.GetFullPath(envFilePath))!;
 
-            // Create directories
-            ConfigFileHelper.CreateDirectoryIfNeeded(configDir);
-            if (envDir != configDir)
-                ConfigFileHelper.CreateDirectoryIfNeeded(envDir);
-            ConfigFileHelper.CreateDirectoryIfNeeded(backupDirectory);
-            ConfigFileHelper.CreateDirectoryIfNeeded(stateDirectory);
+        // Create directories
+        ConfigFileHelper.CreateDirectoryIfNeeded(configDir);
+        if (envDir != configDir)
+            ConfigFileHelper.CreateDirectoryIfNeeded(envDir);
+        ConfigFileHelper.CreateDirectoryIfNeeded(backupDirectory);
+        ConfigFileHelper.CreateDirectoryIfNeeded(stateDirectory);
 
-            // Write template files
-            var configWritten = ConfigFileHelper.WriteFile(
-                configPath,
-                ConfigTemplates.GenerateYamlTemplate(backupDirectory, stateDirectory),
-                settings.Force);
+        // Write template files
+        var configWritten = ConfigFileHelper.WriteFile(
+            configPath,
+            ConfigTemplates.GenerateYamlTemplate(backupDirectory, stateDirectory),
+            settings.Force);
 
-            var envWritten = ConfigFileHelper.WriteFile(
-                envFilePath,
-                ConfigTemplates.GenerateEnvTemplate(),
-                settings.Force);
+        var envWritten = ConfigFileHelper.WriteFile(
+            envFilePath,
+            ConfigTemplates.GenerateEnvTemplate(),
+            settings.Force);
 
-            // Set .env permissions to 600 on Linux
-            if (envWritten)
-                ConfigFileHelper.SetEnvFilePermissions(envFilePath);
+        // Set .env permissions to 600 on Linux
+        if (envWritten)
+            ConfigFileHelper.SetEnvFilePermissions(envFilePath);
 
-            // Print next steps
-            AnsiConsole.WriteLine();
-            PrintNextSteps(configPath, envFilePath);
+        // Print next steps
+        AnsiConsole.WriteLine();
+        PrintNextSteps(configPath, envFilePath);
 
-            return Task.FromResult(0);
-        }
-        catch (UnauthorizedAccessException ex)
-        {
-            AnsiConsole.MarkupLine($"[red]Permission denied:[/] {ex.Message.EscapeMarkup()}");
-            AnsiConsole.MarkupLine("Try running with [blue]sudo[/] for system-wide installation.");
-            return Task.FromResult(1);
-        }
-        catch (Exception ex)
-        {
-            AnsiConsole.MarkupLine($"[red]Error:[/] {ex.Message.EscapeMarkup()}");
-            return Task.FromResult(1);
-        }
+        return Task.FromResult(0);
     }
 
     private static void PrintNextSteps(string configPath, string envFilePath)

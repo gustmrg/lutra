@@ -5,73 +5,62 @@ using Spectre.Console.Cli;
 
 namespace Lutra.CLI.Commands.Restore;
 
-public sealed class RestoreCommand : AsyncCommand<RestoreSettings>
+public sealed class RestoreCommand : LutraCommand<RestoreSettings>
 {
-    public override async Task<int> ExecuteAsync(CommandContext context, RestoreSettings settings)
+    private const string NonInteractiveHint = "Use --target, --file, and --force for non-interactive execution.";
+
+    protected override async Task<int> RunAsync(RestoreSettings settings)
     {
-        try
+        var config = ServiceFactory.LoadConfig(settings);
+
+        DatabaseTarget? target;
+        if (settings.Target is not null)
         {
-            var config = ServiceFactory.LoadConfig(settings);
+            target = ServiceFactory.ResolveTarget(config, settings.Target);
+        }
+        else
+        {
+            if (!EnsureInteractive(NonInteractiveHint))
+                return 1;
 
-            DatabaseTarget? target;
-            if (settings.Target is not null)
+            target = BackupFileSelection.PromptForTarget(config);
+            if (target is null)
             {
-                target = ServiceFactory.ResolveTarget(config, settings.Target);
-            }
-            else
-            {
-                if (!EnsureInteractive())
-                    return 1;
-
-                target = BackupFileSelection.PromptForTarget(config);
-                if (target is null)
-                {
-                    AnsiConsole.MarkupLine("[yellow]No targets are configured.[/]");
-                    return 1;
-                }
-            }
-
-            var historyService = ServiceFactory.CreateHistoryService(config);
-
-            string backupFile;
-            if (settings.File is not null)
-            {
-                backupFile = BackupFileSelection.ResolveBackupFilePath(config, target, settings.File);
-            }
-            else
-            {
-                if (!EnsureInteractive())
-                    return 1;
-
-                var record = await BackupFileSelection.PromptForBackupAsync(historyService, target);
-                if (record is null)
-                {
-                    AnsiConsole.MarkupLine($"[yellow]No successful backups found for target '{target.Name.EscapeMarkup()}'.[/]");
-                    return 1;
-                }
-                backupFile = BackupFileSelection.GetBackupPath(config, target, record);
-            }
-
-            if (!File.Exists(backupFile))
-            {
-                AnsiConsole.MarkupLine($"[red]Backup file not found:[/] {backupFile.EscapeMarkup()}");
+                AnsiConsole.MarkupLine("[yellow]No targets are configured.[/]");
                 return 1;
             }
-
-            var orchestrator = ServiceFactory.CreateRestoreOrchestrator(config);
-
-            return await RestoreDatabaseAsync(config, orchestrator, target, backupFile, settings);
         }
-        catch (ConfigurationException ex)
+
+        var historyService = ServiceFactory.CreateHistoryService(config);
+
+        string backupFile;
+        if (settings.File is not null)
         {
-            AnsiConsole.MarkupLine($"[red]Configuration error:[/] {ex.Message.EscapeMarkup()}");
+            backupFile = BackupFileSelection.ResolveBackupFilePath(config, target, settings.File);
+        }
+        else
+        {
+            if (!EnsureInteractive(NonInteractiveHint))
+                return 1;
+
+            var record = await BackupFileSelection.PromptForBackupAsync(historyService, target);
+            if (record is null)
+            {
+                AnsiConsole.MarkupLine($"[yellow]No successful backups found for target '{target.Name.EscapeMarkup()}'.[/]");
+                return 1;
+            }
+            backupFile = BackupFileSelection.GetBackupPath(config, target, record);
+        }
+
+        if (!File.Exists(backupFile))
+        {
+            AnsiConsole.MarkupLine($"[red]Backup file not found:[/] {backupFile.EscapeMarkup()}");
             return 1;
         }
-        catch (Exception ex)
-        {
-            AnsiConsole.MarkupLine($"[red]Error:[/] {ex.Message.EscapeMarkup()}");
-            return 1;
-        }
+
+        var orchestrator = ServiceFactory.CreateRestoreOrchestrator(config);
+
+        return await RestoreDatabaseAsync(config, orchestrator, target, backupFile, settings);
     }
 
     private static async Task<int> RestoreDatabaseAsync(
@@ -127,7 +116,7 @@ public sealed class RestoreCommand : AsyncCommand<RestoreSettings>
         if (force)
             return true;
 
-        if (!EnsureInteractive())
+        if (!EnsureInteractive(NonInteractiveHint))
             return false;
 
         var confirmed = AnsiConsole.Prompt(
@@ -136,16 +125,5 @@ public sealed class RestoreCommand : AsyncCommand<RestoreSettings>
             AnsiConsole.MarkupLine("[yellow]Restore cancelled.[/]");
 
         return confirmed;
-    }
-
-    private static bool EnsureInteractive()
-    {
-        if (AnsiConsole.Profile.Capabilities.Interactive)
-            return true;
-
-        AnsiConsole.MarkupLine(
-            "[red]This command requires an interactive terminal.[/] " +
-            "Use --target, --file, and --force for non-interactive execution.");
-        return false;
     }
 }

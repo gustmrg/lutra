@@ -5,11 +5,11 @@ using Spectre.Console.Cli;
 
 namespace Lutra.CLI.Commands.Schedule;
 
-public sealed class ScheduleListCommand : AsyncCommand<CommandSettings>
+public sealed class ScheduleListCommand : LutraCommand<CommandSettings>
 {
     private const string SystemdDir = "/etc/systemd/system";
 
-    public override async Task<int> ExecuteAsync(CommandContext context, CommandSettings settings)
+    protected override async Task<int> RunAsync(CommandSettings settings)
     {
         if (!RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
         {
