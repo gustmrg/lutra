@@ -78,7 +78,6 @@ lutra bundle --encrypt                       # Encrypt a bundle with the global 
 lutra config init                            # Create config directories and templates
 lutra config validate                        # Validate configuration
 lutra config validate --preflight            # Also check systemd, Docker, and dump tools
-lutra config generate                        # Generate config from docker-compose.yml
 lutra config reset                           # Reset config files to template defaults
 ```
 
