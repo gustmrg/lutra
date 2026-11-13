@@ -50,7 +50,9 @@ Lutra/
 └── README.md
 ```
 
-The CLI project owns command parsing, global settings, and service composition. The Core project has no UI dependency and contains the PostgreSQL providers, integrity, retention, sync, notifications, configuration, and persistence logic.
+The CLI project owns command parsing, global settings, and service composition. The Core project has no UI dependency and contains the PostgreSQL command builders, the process runner, integrity, retention, sync, notifications, configuration, and persistence logic.
+
+Every external command (`docker`, `rsync`, `ssh`, `systemctl`) goes through `IProcessRunner`. Tests replace it with a fake; nothing else starts a process.
 
 ## Application Database
 

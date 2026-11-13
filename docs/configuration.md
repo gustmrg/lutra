@@ -32,7 +32,7 @@ One state directory belongs to one normalized configuration path. Sharing it bet
 | `container` | string | required | Docker container name or ID |
 | `database` | string | required | Database name inside the container |
 | `username` | string | required | Database user |
-| `password_env` | string | unset | Environment variable containing the password |
+| `password_env` | string | unset | Environment variable containing the password; in `.env`, surrounding quotes are removed |
 | `schedule` | string | `*-*-* 03:00:00` | systemd calendar expression |
 | `verify_schedule` | string | unset | Optional automated restore-drill schedule |
 | `format` | enum | `custom` | `pg_dump` format: `custom` or `plain` |

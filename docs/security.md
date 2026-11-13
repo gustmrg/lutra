@@ -1,7 +1,7 @@
 # Security
 
 - Lutra opens no ports and listens on no sockets.
-- Database passwords are resolved from environment variables rather than stored in YAML.
+- Database passwords are resolved from environment variables rather than stored in YAML, and reach `docker exec` through the environment, never as a command-line argument.
 - Discord incoming webhook URLs are credentials. Keep them in `.env`, never in YAML, and rotate a webhook immediately if its URL is exposed.
 - Keep `.env` files mode `600` and readable only by the account running Lutra.
 - `config validate` warns about overly permissive configuration and backup directories.
