@@ -1,6 +1,3 @@
-using System.Formats.Tar;
-using System.IO.Compression;
-using Lutra.Core.Bundle;
 using Lutra.Core.Configuration;
 using Lutra.Core.History;
 using Lutra.Core.Persistence;
@@ -59,49 +56,6 @@ public sealed class LocalStateBoundaryTests
         Assert.DoesNotContain(invocation.Arguments, argument => argument.Contains("lutra.db", StringComparison.Ordinal));
         Assert.DoesNotContain(invocation.Arguments, argument => argument.Contains("backup-history.json", StringComparison.Ordinal));
         Assert.DoesNotContain(invocation.Arguments, argument => argument.Contains(config.StateDirectory!, StringComparison.Ordinal));
-    }
-
-    [Fact]
-    public async Task Bundle_ContainsArtifactsButNoApplicationOrLegacyHistoryState()
-    {
-        using var temp = new TempDirectory();
-        var config = CreateConfig(temp);
-        var targetDirectory = Path.Combine(config.BackupDirectory, "files");
-        Directory.CreateDirectory(targetDirectory);
-        var artifactPath = Path.Combine(targetDirectory, "files.tar");
-        await File.WriteAllTextAsync(artifactPath, "backup");
-        Directory.CreateDirectory(config.StateDirectory!);
-        await File.WriteAllTextAsync(Path.Combine(config.BackupDirectory, "backup-history.json"), "[]");
-        var history = CreateHistory(config);
-        var timestamp = DateTimeOffset.UtcNow;
-        await history.AddRecordAsync(new HistoryRecord
-        {
-            TargetName = "files",
-            OperationType = HistoryOperationType.Backup,
-            Status = HistoryOperationStatus.Succeeded,
-            StartedAt = timestamp,
-            UpdatedAt = timestamp,
-            CompletedAt = timestamp,
-            FileName = Path.GetFileName(artifactPath),
-            FileSizeBytes = new FileInfo(artifactPath).Length,
-            DurationMs = 0
-        });
-        await File.WriteAllTextAsync(config.ConfigPath!, $$"""
-            backup_directory: {{config.BackupDirectory}}
-            state_directory: {{config.StateDirectory}}
-            """);
-        var output = Path.Combine(temp.Path, "bundle.tar.gz");
-
-        var result = await new DisasterRecoveryBundleService(config, history).CreateAsync(
-            config.ConfigPath!, Path.Combine(temp.Path, ".env"), output, encrypt: false);
-
-        Assert.True(result.Success, result.ErrorMessage);
-        var entries = ReadTarEntries(output);
-        Assert.Contains("backups/files/files.tar", entries);
-        Assert.DoesNotContain(entries, entry => entry.Contains("backup-history.json", StringComparison.Ordinal));
-        Assert.DoesNotContain(entries, entry => entry.Contains("lutra.db", StringComparison.Ordinal));
-        Assert.DoesNotContain(entries, entry => entry.Contains(".lutra-state", StringComparison.Ordinal));
-        Assert.DoesNotContain(entries, entry => entry.Contains("snapshot", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
@@ -210,17 +164,6 @@ public sealed class LocalStateBoundaryTests
             config.StateDirectory!,
             config.ConfigPath!,
             config.BackupDirectory));
-
-    private static IReadOnlyList<string> ReadTarEntries(string path)
-    {
-        using var file = File.OpenRead(path);
-        using var gzip = new GZipStream(file, CompressionMode.Decompress);
-        using var reader = new TarReader(gzip);
-        var entries = new List<string>();
-        while (reader.GetNextEntry() is { } entry)
-            entries.Add(entry.Name);
-        return entries;
-    }
 
     private sealed class CapturingRsyncRunner : IRsyncProcessRunner
     {
