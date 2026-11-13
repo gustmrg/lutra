@@ -489,7 +489,7 @@ echo ""
 STEP=$((STEP + 1))
 echo -e "${STEP}. ${BOLD}Set up automated backups (optional):${NC}"
 if [ "$EUID" -eq 0 ]; then
-    echo -e "   ${BLUE}lutra schedule install --config $CONFIG_DIR/lutra.yaml --env-file $CONFIG_DIR/.env${NC}"
+    echo -e "   ${BLUE}lutra schedule install --user ${SUDO_USER:-<account>} --config $CONFIG_DIR/lutra.yaml --env-file $CONFIG_DIR/.env${NC}"
     echo -e "   ${BLUE}systemctl daemon-reload${NC}"
     echo -e "   ${BLUE}systemctl enable --now lutra-backup-*.timer${NC}"
 else
