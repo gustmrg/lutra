@@ -31,7 +31,9 @@ Run the automated tests with:
 dotnet test Lutra.slnx
 ```
 
-CI runs unit tests, a Linux-only multi-process CLI concurrency test, CLI smoke tests including legacy-history migration, and validates self-contained `linux-x64` and `linux-arm64` release archive layouts. Each release archive must contain only the `lutra` executable; the SQLite native provider is embedded. Docker-based restore tests are opt-in/manual because they require disposable database containers.
+CI runs unit tests, a Linux-only multi-process CLI concurrency test, and a CLI smoke job that backs up and test-restores a real PostgreSQL container. It also validates self-contained `linux-x64` and `linux-arm64` release archive layouts. Each release archive must contain only the `lutra` executable; the SQLite native provider is embedded.
+
+Three tests compare Linux paths and fail on Windows; run the suite on Linux or in a `mcr.microsoft.com/dotnet/sdk:10.0` container for a clean result.
 
 ## Project Structure
 
@@ -48,13 +50,13 @@ Lutra/
 └── README.md
 ```
 
-The CLI project owns command parsing, global settings, and service composition. The Core project has no UI dependency and contains database providers, file archives, integrity, retention, health, sync, bundles, configuration, and persistence logic.
+The CLI project owns command parsing, global settings, and service composition. The Core project has no UI dependency and contains the PostgreSQL providers, integrity, retention, sync, notifications, configuration, and persistence logic.
 
 ## Application Database
 
 `LutraDatabase` owns `<state_directory>/lutra.db`, short-lived configured connections, SQLite PRAGMAs, integrity checks, and ordered application migrations under `Persistence/Migrations`. Domain repositories such as `SqliteBackupHistoryRepository` own their tables and queries; future domains should add independent repositories and migrations instead of turning history or `app_metadata` into a generic store.
 
-Migrations run transactionally and are recorded once in `schema_migrations`. SQLite uses WAL, `synchronous=FULL`, foreign keys, and a 30-second busy timeout. Tests cover idempotent migrations, ownership conflicts, rolled-back write probes, lifecycle transitions, import rollback, and concurrency. The Linux process test launches separate CLI processes because in-process tasks and macOS locking do not reproduce the systemd deployment model.
+Migrations run transactionally and are recorded once in `schema_migrations`. SQLite uses WAL, `synchronous=FULL`, foreign keys, and a 30-second busy timeout. Tests cover idempotent migrations, ownership conflicts, rolled-back write probes, lifecycle transitions, and concurrency. The Linux process test launches separate CLI processes because in-process tasks and macOS locking do not reproduce the systemd deployment model.
 
 ## Tech Stack
 

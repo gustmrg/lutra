@@ -7,12 +7,6 @@
 backup_directory: /var/backups/lutra
 state_directory: /var/lib/lutra
 
-# Optional global age encryption inherited by every target. Store only the public
-# recipient here; keep the private identity key off the VPS.
-# encryption:
-#   type: age
-#   recipient: age1replace_with_your_public_recipient
-
 # Global retention policy (can be overridden per database)
 retention:
   max_count: 10        # Keep at most 10 backups per target
@@ -39,9 +33,8 @@ retention:
 #     webhooks:
 #       - url_env: LUTRA_DISCORD_WEBHOOK
 
-# Database targets to back up
+# PostgreSQL databases to back up
 databases:
-  # PostgreSQL Example
   - name: my-postgres
     type: postgresql
     container: postgres-container    # Docker container name or ID
@@ -50,32 +43,8 @@ databases:
     password_env: POSTGRES_PASSWORD  # Environment variable name (from .env file)
     schedule: "*-*-* 03:00:00"      # Daily at 3:00 AM
     verify_schedule: "Sun *-*-* 05:00:00" # Optional non-destructive restore drill
-    # Host directory populated by PostgreSQL archive_command; archived separately.
-    # postgres_wal_archive_path: /var/lib/postgresql/wal-archive
     format: custom                   # custom (.dump) or plain (.sql)
     compression: gzip                # gzip or none
-
-  # MongoDB Example
-  - name: my-mongo
-    type: mongodb
-    container: mongo-container
-    database: mydb
-    schedule: "Sun *-*-* 04:00:00"  # Weekly on Sundays at 4:00 AM
-    compression: gzip
-    # mongo_oplog: true             # replica-set-wide backup with --oplog
-    # Note: MongoDB doesn't require username/password if auth is disabled
-    # If auth is enabled, add username and password_env
-
-  # SQL Server Example
-  - name: my-sqlserver
-    type: sqlserver
-    container: sqlserver-container
-    database: MyDatabase
-    username: sa
-    password_env: SQLSERVER_PASSWORD
-    schedule: "*-*-* 02:00:00"      # Daily at 2:00 AM
-    compression: gzip
-    # sql_server_backup_kind: full  # full, differential, or log
 
   # Example with custom retention (overrides global settings)
   - name: critical-db
@@ -90,53 +59,6 @@ databases:
     retention:
       max_count: 20      # Keep more backups for critical databases
       max_age_days: 90   # Retain for 90 days
-
-  # SQLite Example (database is the path inside the container)
-  # - name: app-sqlite
-  #   type: sqlite
-  #   container: app-container
-  #   database: /data/app.db
-  #   schedule: "*-*-* 02:30:00"
-  #   compression: gzip
-
-# Docker volume targets use a temporary Alpine helper container.
-# volumes:
-#   - name: app-uploads
-#     volume: app_uploads
-#     schedule: "*-*-* 03:15:00"
-#     compression: gzip
-
-# File targets: back up configuration files as tar archives.
-# Use them for compose files, .env files, reverse proxy configs, and certificates.
-# Do NOT use them for system state (packages, users, firewall rules) — recreate
-# that during a rebuild instead of backing it up.
-# files:
-#   - name: app-config
-#     paths:
-#       - /opt/myapp                  # directories are archived recursively
-#       - /etc/nginx/nginx.conf       # single files work too
-#     exclude:                        # optional glob patterns (* and ?)
-#       - "*.log"
-#       - node_modules                # also matches any path segment with this name
-#     schedule: "*-*-* 03:30:00"
-#     compression: gzip               # gzip (.tar.gz) or none (.tar)
-#     retention:                      # optional per-target override
-#       max_count: 14
-#       max_age_days: 60
-
-# Optional server inventory snapshots. These are restoration aids, not backups of
-# system state. Collector failures are noted in the snapshot and never fail backups.
-# inventory:
-#   enabled: true
-#   schedule: "*-*-* 04:00:00"
-#   # Omit collectors to run all of them. Valid values:
-#   # docker, packages, systemd, crontabs, firewall
-#   collectors:
-#     - docker
-#     - packages
-#     - systemd
-#     - crontabs
-#     - firewall
 
 # Schedule Syntax (systemd OnCalendar format)
 # Uses systemd calendar expressions, NOT cron syntax.

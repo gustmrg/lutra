@@ -2,31 +2,19 @@
 
 ## How It Works
 
-Lutra runs on the VPS alongside your containers. It does not connect to databases over the network. It executes native dump commands inside containers with `docker exec`, streams output to disk, optionally compresses it, and records results in the local `lutra.db` application database. systemd timers handle scheduling.
+Lutra runs on the VPS alongside your containers. It does not connect to databases over the network. It runs `pg_dump` inside the container with `docker exec`, streams the output to disk, optionally compresses it, and records the result in the local `lutra.db` application database. systemd timers handle scheduling.
 
-Supported database providers are:
-
-| Database | Tool | Formats |
-|---|---|---|
-| PostgreSQL | `pg_dump` | Custom (`.dump`) or plain (`.sql`) |
-| SQL Server | `sqlcmd` | Native backup (`.bak`) |
-| MongoDB | `mongodump` | Archive (`.archive`) |
-| SQLite | `sqlite3` | Consistent online copy (`.sqlite`) |
+Dumps use the PostgreSQL custom format (`.dump`) by default, or plain SQL (`.sql`) with `format: plain`.
 
 ## Backup Layout
 
 ```text
 /var/backups/lutra/
-├── backup-history.json     # preserved legacy import input, when present
-├── inventory/
-│   ├── inventory_2026-02-08_040000_a1b2c3d4e5f6.md
-│   └── inventory_2026-02-08_040000_a1b2c3d4e5f6.md.sha256
-├── example-db/
-│   ├── example-db_2026-02-08_030000_a1b2c3d4e5f6.dump.gz
-│   ├── example-db_2026-02-08_030000_a1b2c3d4e5f6.dump.gz.sha256
-│   └── example-db_2026-02-08_030000_a1b2c3d4e5f6.dump.gz.json
-└── app-mongo/
-    └── app-mongo_2026-02-02_040000_a1b2c3d4e5f6.archive.gz
+└── example-db/
+    ├── example-db_2026-02-08_030000_a1b2c3d4e5f6.dump.gz
+    ├── example-db_2026-02-08_030000_a1b2c3d4e5f6.dump.gz.sha256
+    ├── example-db_2026-02-08_030000_a1b2c3d4e5f6.dump.gz.json
+    └── .last-sync.json
 ```
 
 Successful backups write two integrity sidecars:
@@ -35,89 +23,71 @@ Successful backups write two integrity sidecars:
 - `.json` stores target metadata, size, checksum, duration, format, compression, and Lutra version.
 
 Application state is stored separately at `<state_directory>/lutra.db` (normally
-`/var/lib/lutra/lutra.db` for a system install). Existing custom configurations
-without `state_directory` use `<backup_directory>/.lutra-state/lutra.db` for
-compatibility. A legacy `backup-history.json` is imported transactionally once
-and then preserved byte-for-byte as non-authoritative audit/rollback input. New
-versions never write it, and any remote copy is stale after migration.
+`/var/lib/lutra/lutra.db` for a system install). Custom configurations without
+`state_directory` use `<backup_directory>/.lutra-state/lutra.db` for compatibility.
 
 `lutra.db`, `lutra.db-wal`, and `lutra.db-shm` are local operational state, not backup artifacts. They must remain on a local filesystem and be accessed by the same OS account for manual and scheduled commands. NFS and multi-host shared state directories are unsupported because WAL requires local coordination. Independent custom configurations must use distinct `state_directory` values.
 
-History rows are created before work starts. Backup, verify, and sync operations therefore appear as `Creating`, `Verifying`, or `Uploading`, then transition to `Succeeded`, `Failed`, or `Cancelled`. A process that dies leaves a lease; after expiry, the next history access marks it `Interrupted`. Interrupted means completion was not confirmed and is treated as failure by health checks, but a finalized backup artifact is retained for reconciliation.
+History rows are created before work starts. Backup, verify, and sync operations therefore appear as `Creating`, `Verifying`, or `Uploading`, then transition to `Succeeded`, `Failed`, or `Cancelled`. A process that dies leaves a lease; after expiry, the next history access marks it `Interrupted`. Interrupted means completion was not confirmed, but a finalized backup artifact is retained for reconciliation.
 
 Losing the state directory loses local history and in-flight operation state. It does not invalidate or delete backup artifacts, manifests, or checksums. `lutra backup reconcile` can identify artifacts without records, but automatic history reconstruction is not currently supported.
 
-On first database access, an existing `<backup_directory>/backup-history.json` is imported transactionally and exactly once. The JSON file remains byte-identical. Downgrading to a JSON-writing Lutra version after migration is unsupported: that older binary cannot see new SQLite records and could create a divergent history.
+Installations that predate the SQLite history may still have a `backup-history.json` in the backup directory. Lutra no longer reads it and sync excludes it; it can be deleted.
 
-Use `lutra backup verify-file --file <PATH>` to verify an artifact. Use `lutra backup reconcile` to compare target directories with successful history entries. It reports untracked files, missing files, and missing sidecars; exit code `1` means inconsistencies were found.
+Use `lutra backup verify-file --file <PATH>` to verify an artifact against its sidecars. Use `lutra backup reconcile` to compare target directories with successful history entries. It reports untracked files, missing files, and missing sidecars; exit code `1` means inconsistencies were found.
 
 ## Retention
 
 The default `mode: both` is conservative: a backup is deleted only when both its count and age limits are exceeded. Set `mode: either` to delete when either limit matches. `keep_at_least` always protects the newest successful backups. Per-target settings override global defaults.
 
-`cleanup --dry-run` previews every affected path. Orphan sidecars require `--orphan-sidecars`. Untracked backup files require `--orphan-files` plus confirmation or `--force`. `--prune-history` removes old failure, verify, and sync records while preserving successful backup history.
+Retention applies to the local backup directory. The sync destination keeps every file it has received unless `sync.delete` is enabled or `lutra sync --delete` is run.
 
-`lutra health` checks backup age, failure streaks, size and duration anomalies, missing history-referenced files, and checksum or sidecar issues. It exits `0` when healthy, `1` for warnings, and `2` for critical findings. Use `--json` for monitoring integrations.
+`cleanup --dry-run` previews every affected path. Orphan sidecars require `--orphan-sidecars`. Untracked backup files require `--orphan-files` plus confirmation or `--force`. `--prune-history` removes old failure, verify, and sync records while preserving successful backup history.
 
 ## Restore
 
-`lutra restore` is destructive and replaces the configured target contents. It asks for confirmation unless `--force` is passed. Omitting `--target` or `--file` opens interactive selection prompts.
+`lutra restore` is destructive and replaces the contents of the configured database. It asks for confirmation unless `--force` is passed. Omitting `--target` or `--file` opens interactive selection prompts.
 
 ```bash
 lutra restore --target my-postgres --file /var/backups/lutra/my-postgres/latest.dump.gz
-
-# Restore a SQL Server full/differential/log chain in order.
-lutra restore --target finance-db --force \
-  --chain full.bak.gz --chain latest.diff.bak.gz \
-  --chain log-001.log.bak.gz --chain log-002.log.bak.gz
 ```
 
-Restore mechanisms are:
-
-- PostgreSQL: `pg_restore --clean --if-exists` for custom format; plain format drops and recreates the database, then loads with `psql`.
-- SQL Server: streams the `.bak` into the container and runs `RESTORE DATABASE ... WITH REPLACE, RECOVERY`.
-- MongoDB: runs `mongorestore --archive --drop`.
-- SQLite: streams the consistent copy over the configured database file; stop the application first.
-- File targets: extracts the tar archive to the original paths, or to an alternate `--destination`.
+Custom-format dumps are restored with `pg_restore --clean --if-exists`. Plain-format dumps drop and recreate the database, then load with `psql`.
 
 ## Verify
 
-`lutra verify` proves a backup is restorable without touching the production database. It checks the checksum, restores into a temporary database where supported, runs a minimal validation query, and removes the temporary database. Results are recorded as `verify` records in history.
+`lutra verify` proves a backup is restorable without touching the production database. It checks the checksum, restores into a temporary `lutra_verify_<id>` database in the same container, counts the restored tables, and drops the temporary database. Results are recorded as `verify` records in history. Verification exits `0` on success and `1` on failure.
 
 ```bash
 lutra verify --target my-postgres
 ```
 
-PostgreSQL uses a temporary `lutra_verify_<id>` database. SQL Server builds `MOVE` clauses from `RESTORE FILELISTONLY`. MongoDB remaps namespaces with `--nsFrom` and `--nsTo`, using `mongosh` or the legacy `mongo` shell. File targets are read through and their entries counted. Verification exits `0` on success and `1` on failure.
-
 Set `verify_schedule` on a database target and run `sudo lutra schedule install` to schedule restore drills.
 
-## Advanced Recovery
+To check a backup away from the server, restore it into a disposable container:
 
-- PostgreSQL WAL/PITR: configure `archive_command` to copy completed WAL segments to a host directory and set `postgres_wal_archive_path`. Never point it at live `pg_wal`; pgBackRest or WAL-G remains preferable for full PITR orchestration and repository pruning.
-- SQL Server chains: set `sql_server_backup_kind` to `full`, `differential`, or `log`. Restore an ordered chain with repeated `--chain`; Lutra validates checksums and ordering.
-- MongoDB oplog: set `mongo_oplog: true` for a replica-set-wide archive restored with `--oplogReplay`. Namespace-remapped test restores are rejected; verify these in a disposable replica set. Sharded clusters require MongoDB's coordinated backup tooling.
+```bash
+sha256sum -c my-postgres_<timestamp>.dump.gz.sha256
+docker run -d --rm --name restore-test -e POSTGRES_PASSWORD=test postgres:17-alpine
+docker exec restore-test psql -U postgres -c 'CREATE DATABASE restore_test'
+gunzip -c my-postgres_<timestamp>.dump.gz \
+  | docker exec -i restore-test pg_restore -U postgres -d restore_test --no-owner --exit-on-error
+docker stop restore-test
+```
 
-`config validate --preflight` reports installed dump-tool versions. Scheduled disposable restore drills are the strongest practical cross-version compatibility check.
-
-## Disaster Recovery Bundles
-
-`lutra bundle` creates a checksum-protected archive containing the latest successful artifact and sidecars for every configured target, the latest inventory snapshot, a copy of `lutra.yaml`, environment variable names without values, and generated `RESTORE.md`. Bundle creation fails rather than silently omitting a target whose backup is missing.
-
-Use `--encrypt` to protect the complete archive with the global age recipient. Bundles are written under `<backup_directory>/bundles/` and included in a full `lutra sync`. The local application database, its WAL/SHM files, and the preserved legacy history are never included. The generated instructions identify system state Lutra does not cover.
+Use a PostgreSQL image at least as new as the server that produced the dump.
 
 ## Offsite Copies
 
 Lutra can push backups with its optional rsync configuration. A pull from a Raspberry Pi or local machine provides stronger isolation and is also supported:
 
 ```bash
-rsync -avz --exclude='/.lutra-state/' --exclude='/backup-history.json' \
-  vps:/var/backups/lutra/ ~/backups/lutra/
+rsync -avz --exclude='/.lutra-state/' vps:/var/backups/lutra/ ~/backups/lutra/
 
 # Example local cron entry
-0 6 * * * rsync -avz --exclude='/.lutra-state/' --exclude='/backup-history.json' vps:/var/backups/lutra/ ~/backups/lutra/
-
-scp -r vps:/var/backups/lutra/my-postgres/ ~/backups/lutra/my-postgres/
+0 6 * * * rsync -avz --exclude='/.lutra-state/' vps:/var/backups/lutra/ ~/backups/lutra/
 ```
 
-For a Raspberry Pi, use a dedicated restricted user and grant its SSH key write access only to the destination directory. A pull-based timer is safer because a compromised VPS cannot use the Pi's credentials to delete the repository. Built-in sync excludes local application state, legacy history/lock files, and temporary files. Apply equivalent exclusions to manual pull tools; do not copy or snapshot the live `lutra.db`, `lutra.db-wal`, or `lutra.db-shm` family.
+For a Raspberry Pi, use a dedicated restricted user and grant its SSH key write access only to the destination directory. A pull-based timer is safer because a compromised VPS cannot use the Pi's credentials to delete the repository. Built-in sync excludes local application state, lock files, and temporary files. Apply equivalent exclusions to manual pull tools; do not copy or snapshot the live `lutra.db`, `lutra.db-wal`, or `lutra.db-shm` family.
+
+Dumps are stored unencrypted on both sides. Restrict the destination directory to the account that receives the sync.
