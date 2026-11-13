@@ -129,8 +129,8 @@ public class YamlConfigLoader : IConfigLoader
         ValidateRetention("retention", config.Retention);
         ValidateEncryption("encryption", config.Encryption);
 
-        if (config.Databases.Count == 0 && config.Files.Count == 0 && config.Volumes.Count == 0)
-            throw new ConfigurationException("At least one target must be configured under 'databases', 'files', or 'volumes'.");
+        if (config.Databases.Count == 0 && config.Files.Count == 0)
+            throw new ConfigurationException("At least one target must be configured under 'databases' or 'files'.");
 
         var targetNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
@@ -215,23 +215,6 @@ public class YamlConfigLoader : IConfigLoader
 
         if (config.Notifications?.Discord is { } discord)
             DiscordWebhookUrlResolver.Resolve(discord);
-
-        for (var i = 0; i < config.Volumes.Count; i++)
-        {
-            var volume = config.Volumes[i];
-            var prefix = $"volumes[{i}]";
-            if (string.IsNullOrWhiteSpace(volume.Name) || !IsSafeName(volume.Name))
-                throw new ConfigurationException($"{prefix}: a safe 'name' is required.");
-            if (!targetNames.Add(volume.Name))
-                throw new ConfigurationException($"{prefix} ({volume.Name}): duplicate target name.");
-            if (string.IsNullOrWhiteSpace(volume.Volume))
-                throw new ConfigurationException($"{prefix} ({volume.Name}): 'volume' is required.");
-            if (string.IsNullOrWhiteSpace(volume.Schedule) || LooksLikeCronExpression(volume.Schedule))
-                throw new ConfigurationException($"{prefix} ({volume.Name}): use a valid systemd calendar 'schedule'.");
-            if (volume.Retention is not null)
-                ValidateRetention($"{prefix} ({volume.Name}).retention", volume.Retention);
-            ValidateEncryption($"{prefix} ({volume.Name}).encryption", volume.Encryption);
-        }
 
         for (var i = 0; i < config.Files.Count; i++)
         {

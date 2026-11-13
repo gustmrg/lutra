@@ -65,7 +65,6 @@ public sealed class VerifyCommand : AsyncCommand<VerifySettings>
                 {
                     DatabaseTarget db => await orchestrator.TestRestoreAsync(db, backupFile),
                     FileTarget files => await orchestrator.VerifyFilesAsync(files, backupFile),
-                    VolumeTarget volume => await orchestrator.VerifyVolumeAsync(volume, backupFile),
                     _ => throw new ConfigurationException($"Unknown target type for '{target.Name}'.")
                 });
 

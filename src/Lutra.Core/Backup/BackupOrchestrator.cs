@@ -5,7 +5,6 @@ using Lutra.Core.Configuration;
 using Lutra.Core.Encryption;
 using Lutra.Core.Files;
 using Lutra.Core.History;
-using Lutra.Core.Volumes;
 
 namespace Lutra.Core.Backup;
 
@@ -150,34 +149,6 @@ public class BackupOrchestrator
             cancellationToken);
     }
 
-    public async Task<BackupResult> BackupVolumeAsync(VolumeTarget target, CancellationToken cancellationToken = default)
-    {
-        return await RunBackupAsync(
-            target,
-            ".tar",
-            target.Compression,
-            (tempFilePath, _, ct) => DockerVolumeArchive.CreateAsync(
-                target.Volume, tempFilePath, target.Compression, ct),
-            (fileName, fileSize, sha256, startedAt, duration) => new BackupManifest
-            {
-                TargetName = target.Name,
-                TargetType = "volume",
-                Volume = target.Volume,
-                BackupFileName = fileName,
-                FileSizeBytes = fileSize,
-                Sha256 = sha256,
-                Compression = target.Compression,
-                StartedAt = startedAt,
-                CompletedAt = DateTime.UtcNow,
-                DurationMs = (long)duration.TotalMilliseconds,
-                LutraVersion = GetVersion(),
-                Success = true,
-                Encrypted = GetEncryption(target) is not null,
-                EncryptionRecipientFingerprint = GetRecipientFingerprint(target)
-            },
-            cancellationToken);
-    }
-
     public async Task<IReadOnlyList<BackupResult>> BackupAllAsync(CancellationToken cancellationToken = default)
     {
         var results = new List<BackupResult>();
@@ -194,11 +165,6 @@ public class BackupOrchestrator
         foreach (var target in _config.Files)
         {
             results.Add(await BackupFilesAsync(target, cancellationToken));
-        }
-
-        foreach (var target in _config.Volumes)
-        {
-            results.Add(await BackupVolumeAsync(target, cancellationToken));
         }
 
         return results;

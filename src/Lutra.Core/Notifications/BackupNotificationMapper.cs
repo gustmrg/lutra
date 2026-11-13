@@ -31,7 +31,6 @@ public static class BackupNotificationMapper
             {
                 DatabaseTarget => BackupNotificationTargetKind.Database,
                 FileTarget => BackupNotificationTargetKind.Files,
-                VolumeTarget => BackupNotificationTargetKind.Volume,
                 _ => throw new InvalidOperationException($"Unsupported backup target '{result.TargetName}'.")
             };
 

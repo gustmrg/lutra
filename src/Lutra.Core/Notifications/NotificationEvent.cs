@@ -40,7 +40,6 @@ public enum BackupNotificationTargetKind
 {
     Database,
     Files,
-    Volume,
     PostgresWal
 }
 
