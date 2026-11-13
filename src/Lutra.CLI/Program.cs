@@ -75,9 +75,6 @@ app.Configure(config =>
 
         cfg.AddCommand<ConfigResetCommand>("reset")
             .WithDescription("Reset configuration and environment files to template defaults.");
-
-        cfg.AddCommand<ConfigGenerateCommand>("generate")
-            .WithDescription("Generate database targets from a Docker Compose file.");
     });
 
     config.AddCommand<UninstallCommand>("uninstall")
