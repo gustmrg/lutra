@@ -57,7 +57,7 @@ public sealed class RsyncService
 
         if (targetName is not null)
         {
-            var target = _config.AllTargets().FirstOrDefault(item =>
+            var target = _config.Databases.FirstOrDefault(item =>
                 item.Name.Equals(targetName, StringComparison.OrdinalIgnoreCase));
             if (target is null)
                 return new SyncResult(false, dryRun, targetName, null, "Target was not found.", startedAt);
@@ -69,7 +69,7 @@ public sealed class RsyncService
         }
         else
         {
-            historyTargetNames = _config.AllTargets().Select(target => target.Name).ToList();
+            historyTargetNames = _config.Databases.Select(target => target.Name).ToList();
             lockTargetNames = historyTargetNames;
         }
 

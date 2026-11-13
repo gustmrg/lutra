@@ -13,7 +13,7 @@ public sealed class VerifyCommand : AsyncCommand<VerifySettings>
         {
             var config = ServiceFactory.LoadConfig(settings);
 
-            IBackupTarget? target;
+            DatabaseTarget? target;
             if (settings.Target is not null)
             {
                 target = ServiceFactory.ResolveTarget(config, settings.Target);
@@ -61,12 +61,7 @@ public sealed class VerifyCommand : AsyncCommand<VerifySettings>
 
             var orchestrator = ServiceFactory.CreateRestoreOrchestrator(config);
             var result = await AnsiConsole.Status()
-                .StartAsync("Verifying backup...", async _ => target switch
-                {
-                    DatabaseTarget db => await orchestrator.TestRestoreAsync(db, backupFile),
-                    FileTarget files => await orchestrator.VerifyFilesAsync(files, backupFile),
-                    _ => throw new ConfigurationException($"Unknown target type for '{target.Name}'.")
-                });
+                .StartAsync("Verifying backup...", _ => orchestrator.TestRestoreAsync(target, backupFile));
 
             await NotificationConsole.SendAsync(
                 config,
@@ -79,8 +74,7 @@ public sealed class VerifyCommand : AsyncCommand<VerifySettings>
             {
                 AnsiConsole.MarkupLine("[green]Verification passed[/]");
                 AnsiConsole.MarkupLine($"  Checksum: [green]valid[/]");
-                if (target is DatabaseTarget)
-                    AnsiConsole.MarkupLine($"  Test-restore: [green]succeeded[/] (temporary database dropped)");
+                AnsiConsole.MarkupLine($"  Test-restore: [green]succeeded[/] (temporary database dropped)");
                 if (result.ValidationDetails is not null)
                     AnsiConsole.MarkupLine($"  {result.ValidationDetails.EscapeMarkup()}");
                 AnsiConsole.MarkupLine($"  Duration: {result.Duration.TotalSeconds:0.0}s");

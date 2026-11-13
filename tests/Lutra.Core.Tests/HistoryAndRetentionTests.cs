@@ -34,10 +34,12 @@ public sealed class HistoryAndRetentionTests
     public async Task EitherRetention_DeletesCountOverflowWhileKeepingMinimum()
     {
         using var temp = new TempDirectory();
-        var target = new FileTarget
+        var target = new DatabaseTarget
         {
             Name = "files",
-            Paths = [temp.Path],
+            Type = DatabaseType.PostgreSql,
+            Container = "postgres",
+            Database = "app",
             Retention = new RetentionPolicy
             {
                 MaxCount = 2,
@@ -50,7 +52,7 @@ public sealed class HistoryAndRetentionTests
         {
             BackupDirectory = temp.Path,
             Retention = new RetentionPolicy(),
-            Files = [target]
+            Databases = [target]
         };
         var history = CreateHistory(temp);
         for (var index = 0; index < 5; index++)

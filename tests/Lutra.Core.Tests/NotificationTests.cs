@@ -17,7 +17,6 @@ public sealed class NotificationTests
             new BackupNotificationDetail
             {
                 TargetName = "postgres",
-                TargetKind = BackupNotificationTargetKind.Database,
                 Success = true,
                 Database = "app",
                 Container = "postgres-1",
@@ -29,7 +28,6 @@ public sealed class NotificationTests
             new BackupNotificationDetail
             {
                 TargetName = "mongo",
-                TargetKind = BackupNotificationTargetKind.Database,
                 Success = false,
                 Database = "app",
                 Container = "mongo-1",
@@ -67,7 +65,6 @@ public sealed class NotificationTests
         var details = Enumerable.Range(1, 11).Select(index => new BackupNotificationDetail
         {
             TargetName = $"target-{index}",
-            TargetKind = BackupNotificationTargetKind.Files,
             Success = true,
             FileName = $"target-{index}.tar.gz",
             FileSizeBytes = index,
@@ -94,7 +91,6 @@ public sealed class NotificationTests
         var details = Enumerable.Range(1, 10).Select(index => new BackupNotificationDetail
         {
             TargetName = new string('t', 2000),
-            TargetKind = BackupNotificationTargetKind.Database,
             Success = false,
             Database = new string('d', 2000),
             Container = new string('c', 2000),
@@ -198,8 +194,6 @@ public sealed class NotificationTests
         };
 
         var mapped = BackupNotificationMapper.Map([success, failure], config);
-
-        Assert.Equal(BackupNotificationTargetKind.Database, mapped[0].TargetKind);
         Assert.Equal("app", mapped[0].Database);
         Assert.Equal("postgres-1", mapped[0].Container);
         Assert.Equal(0, mapped[0].FileSizeBytes);
@@ -307,9 +301,12 @@ public sealed class NotificationTests
         retention:
           max_count: 10
           max_age_days: 30
-        files:
+        databases:
           - name: config
-            paths: [{{temp.Path}}]
+            type: postgresql
+            container: postgres
+            database: app
+            username: postgres
             schedule: daily
         {{extra}}
         """;

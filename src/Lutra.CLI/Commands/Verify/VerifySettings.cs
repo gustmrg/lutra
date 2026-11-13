@@ -6,7 +6,7 @@ namespace Lutra.CLI.Commands.Verify;
 public class VerifySettings : GlobalSettings
 {
     [CommandOption("--target <NAME>")]
-    [Description("Target name to verify (database or file). If omitted, you will be prompted.")]
+    [Description("Target name to verify. If omitted, you will be prompted.")]
     public string? Target { get; set; }
 
     [CommandOption("--file <PATH>")]

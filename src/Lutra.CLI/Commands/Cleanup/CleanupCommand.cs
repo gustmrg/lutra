@@ -17,8 +17,8 @@ public sealed class CleanupCommand : AsyncCommand<CleanupSettings>
             var orchestrator = ServiceFactory.CreateOrchestrator(config);
 
             var targets = settings.Target is not null
-                ? new List<IBackupTarget> { ServiceFactory.ResolveTarget(config, settings.Target) }
-                : config.AllTargets().ToList();
+                ? new List<DatabaseTarget> { ServiceFactory.ResolveTarget(config, settings.Target) }
+                : config.Databases.ToList();
             var totalDeleted = 0;
 
             foreach (var target in targets)
@@ -101,7 +101,7 @@ public sealed class CleanupCommand : AsyncCommand<CleanupSettings>
 
     private static async Task<int> RunCleanupAsync(
         BackupOrchestrator orchestrator,
-        IBackupTarget target,
+        DatabaseTarget target,
         bool dryRun)
     {
         if (!dryRun)

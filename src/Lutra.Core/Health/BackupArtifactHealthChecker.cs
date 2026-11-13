@@ -19,7 +19,7 @@ public sealed class BackupArtifactHealthChecker
     }
 
     public async Task<IReadOnlyList<HealthFinding>> CheckAsync(
-        IBackupTarget target,
+        DatabaseTarget target,
         IReadOnlyList<HistoryRecord> records,
         CancellationToken cancellationToken = default)
     {

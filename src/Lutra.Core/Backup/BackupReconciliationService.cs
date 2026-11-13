@@ -22,7 +22,7 @@ public sealed class BackupReconciliationService
         string? targetName = null,
         CancellationToken cancellationToken = default)
     {
-        var targets = _config.AllTargets()
+        var targets = _config.Databases
             .Where(target => targetName is null
                 || target.Name.Equals(targetName, StringComparison.OrdinalIgnoreCase))
             .ToList();

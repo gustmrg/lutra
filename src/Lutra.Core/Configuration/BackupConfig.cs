@@ -59,11 +59,6 @@ public class BackupConfig
     /// </summary>
     public List<DatabaseTarget> Databases { get; init; } = [];
 
-    /// <summary>
-    /// Gets the list of file/configuration targets to back up.
-    /// </summary>
-    public List<FileTarget> Files { get; init; } = [];
-
     public HealthConfig? Health { get; init; }
 
     /// <summary>Gets optional outbound notification settings.</summary>
@@ -71,10 +66,4 @@ public class BackupConfig
 
     /// <summary>Gets optional Raspberry Pi/offsite rsync settings.</summary>
     public RsyncConfig? Sync { get; init; }
-
-    /// <summary>
-    /// Returns all configured targets (databases first, then file targets).
-    /// </summary>
-    public IEnumerable<IBackupTarget> AllTargets()
-        => Databases.Cast<IBackupTarget>().Concat(Files);
 }

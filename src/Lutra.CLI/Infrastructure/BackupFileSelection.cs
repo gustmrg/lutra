@@ -14,9 +14,9 @@ internal static class BackupFileSelection
     /// Prompts the user to select a configured target (database or file).
     /// Returns <see langword="null"/> when no targets are configured.
     /// </summary>
-    public static IBackupTarget? PromptForTarget(BackupConfig config)
+    public static DatabaseTarget? PromptForTarget(BackupConfig config)
     {
-        var targets = config.AllTargets().ToList();
+        var targets = config.Databases.ToList();
 
         if (targets.Count == 0)
             return null;
@@ -25,7 +25,7 @@ internal static class BackupFileSelection
             return targets[0];
 
         return AnsiConsole.Prompt(
-            new SelectionPrompt<IBackupTarget>()
+            new SelectionPrompt<DatabaseTarget>()
                 .Title("Select a [green]target[/]:")
                 .PageSize(10)
                 .UseConverter(DescribeTarget)
@@ -38,7 +38,7 @@ internal static class BackupFileSelection
     /// </summary>
     public static async Task<HistoryRecord?> PromptForBackupAsync(
         IBackupHistoryService historyService,
-        IBackupTarget target)
+        DatabaseTarget target)
     {
         var records = await historyService.GetRecordsByTargetAsync(target.Name);
         var backups = records
@@ -65,7 +65,7 @@ internal static class BackupFileSelection
     public static async Task<HistoryRecord?> FindLatestBackupAsync(
         BackupConfig config,
         IBackupHistoryService historyService,
-        IBackupTarget target)
+        DatabaseTarget target)
     {
         var records = await historyService.GetRecordsByTargetAsync(target.Name);
 
@@ -80,7 +80,7 @@ internal static class BackupFileSelection
     /// Resolves a user-supplied backup file reference: either an existing path, or a
     /// file name inside the target's backup directory.
     /// </summary>
-    public static string ResolveBackupFilePath(BackupConfig config, IBackupTarget target, string file)
+    public static string ResolveBackupFilePath(BackupConfig config, DatabaseTarget target, string file)
     {
         if (File.Exists(file))
             return Path.GetFullPath(file);
@@ -91,15 +91,11 @@ internal static class BackupFileSelection
     /// <summary>
     /// Returns the full path of the backup file for a history record.
     /// </summary>
-    public static string GetBackupPath(BackupConfig config, IBackupTarget target, HistoryRecord record)
+    public static string GetBackupPath(BackupConfig config, DatabaseTarget target, HistoryRecord record)
         => Path.Combine(config.BackupDirectory, target.Name, record.FileName!);
 
-    public static string DescribeTarget(IBackupTarget target) => target switch
-    {
-        DatabaseTarget db => $"{db.Name} ({db.Type}, database: {db.Database}, container: {db.Container})",
-        FileTarget files => $"{files.Name} (files, {files.Paths.Count} path(s))",
-        _ => target.Name
-    };
+    public static string DescribeTarget(DatabaseTarget target)
+        => $"{target.Name} (database: {target.Database}, container: {target.Container})";
 
     public static string FormatBytes(long bytes)
     {

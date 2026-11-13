@@ -61,29 +61,14 @@ public sealed class BackupLifecycleIntegrationTests
     public async Task FinalizedArtifact_SurvivesHistoryCompletionFailureForReconciliation()
     {
         using var temp = new TempDirectory();
-        var sourcePath = Path.Combine(temp.Path, "source.txt");
-        await File.WriteAllTextAsync(sourcePath, "important");
-        var target = new FileTarget
-        {
-            Name = "files",
-            Paths = [sourcePath],
-            Schedule = "daily",
-            Compression = CompressionType.None
-        };
-        var config = new BackupConfig
-        {
-            BackupDirectory = Path.Combine(temp.Path, "backups"),
-            StateDirectory = Path.Combine(temp.Path, "state"),
-            ConfigPath = Path.Combine(temp.Path, "lutra.yaml"),
-            Retention = new RetentionPolicy(),
-            Files = [target]
-        };
-        var innerHistory = CreateHistory(config);
+        var (config, target, innerHistory) = CreateDatabaseScenario(temp);
         var failingHistory = new CompletionFailingHistory(innerHistory);
+        var executor = new BlockingProcessExecutor();
+        executor.Release.TrySetResult();
         var orchestrator = new BackupOrchestrator(
-            [], new NeverProcessExecutor(), failingHistory, config);
+            [new StreamingTestProvider()], executor, failingHistory, config);
 
-        var result = await orchestrator.BackupFilesAsync(target);
+        var result = await orchestrator.BackupAsync(target);
 
         Assert.False(result.Success);
         Assert.Contains("Simulated history completion failure", result.ErrorMessage);

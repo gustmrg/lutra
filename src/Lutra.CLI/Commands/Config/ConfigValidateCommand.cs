@@ -33,13 +33,6 @@ public sealed class ConfigValidateCommand : AsyncCommand<ConfigValidateSettings>
                 AnsiConsole.MarkupLine($"    - {db.Name.EscapeMarkup()} ({db.Type}, container: {db.Container.EscapeMarkup()})");
             }
 
-            AnsiConsole.MarkupLine($"  File targets: [blue]{config.Files.Count}[/]");
-
-            foreach (var ft in config.Files)
-            {
-                AnsiConsole.MarkupLine($"    - {ft.Name.EscapeMarkup()} ({ft.Paths.Count} path(s))");
-            }
-
             if (config.Sync is { } sync)
                 AnsiConsole.MarkupLine($"  Offsite sync: [blue]{sync.User.EscapeMarkup()}@{sync.Host.EscapeMarkup()}:{sync.DestinationPath.EscapeMarkup()}[/]");
 
@@ -50,9 +43,6 @@ public sealed class ConfigValidateCommand : AsyncCommand<ConfigValidateSettings>
                 return 1;
 
             if (!CheckStateDatabase(config))
-                return 1;
-
-            if (!CheckFileTargets(config))
                 return 1;
 
             if (settings.Preflight)
@@ -161,13 +151,7 @@ public sealed class ConfigValidateCommand : AsyncCommand<ConfigValidateSettings>
             }
         }
 
-        foreach (var ft in config.Files)
-        {
-            if (!await ValidateScheduleAsync(ft))
-                failed = true;
-        }
-
-        if (config.AllTargets().Any(target => target.Encryption is not null) || config.Encryption is not null)
+        if (config.Databases.Any(target => target.Encryption is not null) || config.Encryption is not null)
         {
             if (!await CommandSucceedsAsync("age", ["--version"]))
             {
@@ -193,107 +177,7 @@ public sealed class ConfigValidateCommand : AsyncCommand<ConfigValidateSettings>
         return failed ? 1 : 0;
     }
 
-    private static bool CheckFileTargets(BackupConfig config)
-    {
-        var valid = true;
-
-        foreach (var ft in config.Files)
-        {
-            foreach (var path in ft.Paths)
-            {
-                if (!File.Exists(path) && !Directory.Exists(path))
-                {
-                    AnsiConsole.MarkupLine($"[red]{ft.Name.EscapeMarkup()}:[/] path does not exist: {path.EscapeMarkup()}");
-                    valid = false;
-                    continue;
-                }
-
-                if (!IsReadable(path))
-                {
-                    AnsiConsole.MarkupLine($"[red]{ft.Name.EscapeMarkup()}:[/] path is not readable: {path.EscapeMarkup()}");
-                    valid = false;
-                    continue;
-                }
-
-                foreach (var sensitive in FindSensitivePaths(path))
-                {
-                    if (ft.Encryption is null && config.Encryption is null)
-                    {
-                        AnsiConsole.MarkupLine(
-                            $"[yellow]{ft.Name.EscapeMarkup()}:[/] '{sensitive.EscapeMarkup()}' looks like it may contain secrets. " +
-                            "Configure age encryption or restrict access to the backup directory.");
-                    }
-                }
-            }
-        }
-
-        return valid;
-    }
-
-    private static bool IsReadable(string path)
-    {
-        try
-        {
-            if (File.Exists(path))
-            {
-                using var stream = File.OpenRead(path);
-                return true;
-            }
-
-            _ = Directory.EnumerateFileSystemEntries(path).FirstOrDefault();
-            return true;
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            return false;
-        }
-    }
-
-    private static IEnumerable<string> FindSensitivePaths(string path)
-    {
-        if (LooksSensitive(path))
-        {
-            yield return path;
-            yield break;
-        }
-
-        // Also scan the immediate children of a configured directory, since users
-        // typically add whole directories (e.g. an app folder containing .env).
-        if (!Directory.Exists(path))
-            yield break;
-
-        IEnumerable<string> children;
-        try
-        {
-            children = Directory.EnumerateFileSystemEntries(path).ToList();
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            yield break;
-        }
-
-        foreach (var child in children)
-        {
-            if (LooksSensitive(child))
-                yield return child;
-        }
-    }
-
-    private static bool LooksSensitive(string path)
-    {
-        var name = Path.GetFileName(path.TrimEnd(Path.DirectorySeparatorChar)).ToLowerInvariant();
-
-        return name.Contains(".env")
-            || name is "id_rsa" or "id_ed25519" or "id_ecdsa" or "id_dsa"
-            || name.EndsWith(".pem")
-            || name.EndsWith(".key")
-            || name.EndsWith(".p12")
-            || name.EndsWith(".pfx")
-            || name.Contains("secret")
-            || name.Contains("credential");
-    }
-
-    private static Task<bool> ValidateScheduleAsync(IBackupTarget target)
+    private static Task<bool> ValidateScheduleAsync(DatabaseTarget target)
         => ValidateScheduleExpressionAsync(target.Name, target.Schedule);
 
     private static async Task<bool> ValidateScheduleExpressionAsync(string name, string schedule)
