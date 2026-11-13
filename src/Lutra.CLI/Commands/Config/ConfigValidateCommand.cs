@@ -84,8 +84,7 @@ public sealed class ConfigValidateCommand : AsyncCommand<ConfigValidateSettings>
         {
             var database = new LutraDatabase(
                 config.StateDirectory!,
-                config.ConfigPath!,
-                config.BackupDirectory);
+                config.ConfigPath!);
             database.ProbeWriteAccess();
             AnsiConsole.MarkupLine("  Application database: [green]writable (SQLite WAL)[/]");
             return true;

@@ -145,7 +145,7 @@ public sealed class BackupLifecycleIntegrationTests
 
     private static SqliteBackupHistoryRepository CreateHistory(BackupConfig config)
         => new(new LutraDatabase(
-            config.StateDirectory!, config.ConfigPath!, config.BackupDirectory));
+            config.StateDirectory!, config.ConfigPath!));
 
     private sealed class StreamingTestProvider : IBackupProvider
     {

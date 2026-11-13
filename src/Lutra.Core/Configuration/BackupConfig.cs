@@ -21,8 +21,6 @@ public class BackupConfig
     /// </summary>
     /// <remarks>
     /// Each database target gets its own subdirectory under this path.
-    /// A legacy <c>backup-history.json</c> at the root is import-only and is
-    /// not the authoritative application history store.
     /// </remarks>
     public required string BackupDirectory { get; init; }
 

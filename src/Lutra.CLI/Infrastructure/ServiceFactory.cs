@@ -70,8 +70,7 @@ internal static class ServiceFactory
         {
             var database = new LutraDatabase(
                 config.StateDirectory,
-                config.ConfigPath,
-                config.BackupDirectory);
+                config.ConfigPath);
             return new SqliteBackupHistoryRepository(database);
         }
         catch (LutraDatabaseOwnershipException ex)

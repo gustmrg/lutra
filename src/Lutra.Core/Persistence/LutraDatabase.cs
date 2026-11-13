@@ -9,9 +9,8 @@ public sealed class LutraDatabase
     private const string ConfigPathMetadataKey = "installation.config_path";
     private readonly string _connectionString;
     private readonly string _normalizedConfigPath;
-    private readonly string? _legacyBackupDirectory;
 
-    public LutraDatabase(string stateDirectory, string configPath, string? legacyBackupDirectory = null)
+    public LutraDatabase(string stateDirectory, string configPath)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(stateDirectory);
         ArgumentException.ThrowIfNullOrWhiteSpace(configPath);
@@ -19,9 +18,6 @@ public sealed class LutraDatabase
         StateDirectory = Path.GetFullPath(stateDirectory);
         DatabasePath = Path.Combine(StateDirectory, "lutra.db");
         _normalizedConfigPath = Path.GetFullPath(configPath);
-        _legacyBackupDirectory = legacyBackupDirectory is null
-            ? null
-            : Path.GetFullPath(legacyBackupDirectory);
         _connectionString = new SqliteConnectionStringBuilder
         {
             DataSource = DatabasePath,
@@ -88,9 +84,6 @@ public sealed class LutraDatabase
             }
 
             ValidateOrClaimConfigOwnership(connection, cancellationToken);
-            if (_legacyBackupDirectory is not null)
-                LegacyBackupHistoryImporter.ImportIfNeeded(
-                    connection, _legacyBackupDirectory, cancellationToken);
             ExecuteNonQuery(connection, "COMMIT;", cancellationToken);
             transactionStarted = false;
         }

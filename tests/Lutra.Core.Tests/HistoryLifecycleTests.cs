@@ -142,8 +142,7 @@ public sealed class HistoryLifecycleTests
         => new(
             new LutraDatabase(
                 Path.Combine(temp.Path, "state"),
-                Path.Combine(temp.Path, "lutra.yaml"),
-                Path.Combine(temp.Path, "backups")),
+                Path.Combine(temp.Path, "lutra.yaml")),
             timeProvider);
 
     private static async Task<HistoryRecord> FindAsync(
