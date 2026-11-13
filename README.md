@@ -1,19 +1,14 @@
 # Lutra
 
-**Automated database and configuration backups for a Docker-based VPS.**
+**Automated PostgreSQL backups for a Docker-based VPS.**
 
-Lutra is a Linux CLI that runs native database dump tools inside Docker containers, archives selected files and volumes, and manages checksums, manifests, retention, restore verification, optional encryption, and offsite copies. It is distributed as a self-contained binary, so no .NET runtime is required on the server.
+Lutra is a Linux CLI that runs `pg_dump` inside Docker containers and manages checksums, manifests, retention, restore verification, and offsite copies. It is distributed as a self-contained binary, so no .NET runtime is required on the server.
 
 > Lutra is in early development. Core backup, restore, and restore verification functionality is implemented.
 
 ## Supported Databases
 
-| Database | Tool | Formats |
-|---|---|---|
-| PostgreSQL | `pg_dump` | Custom (`.dump`) or plain (`.sql`) |
-| SQL Server | `sqlcmd` | Native backup (`.bak`) |
-| MongoDB | `mongodump` | Archive (`.archive`) |
-| SQLite | `sqlite3` | Consistent online copy (`.sqlite`) |
+Lutra backs up PostgreSQL with `pg_dump`, in custom (`.dump`) or plain (`.sql`) format.
 
 ## Quick Start
 
@@ -35,7 +30,7 @@ For a user-only installation, omit `sudo`:
 curl -fsSL https://raw.githubusercontent.com/gustmrg/lutra/main/setup.sh | bash -s
 ```
 
-The setup script creates `/etc/lutra`, `/var/backups/lutra`, and `/var/lib/lutra` for system installs. User installs use `~/.config/lutra`, `~/backups/lutra`, and `$XDG_STATE_HOME/lutra` (or `~/.local/state/lutra`). See [Installation](docs/installation.md) for prerequisites, ownership, updating, and uninstall preservation flags.
+The setup script creates `/etc/lutra`, `/var/backups/lutra`, and `/var/lib/lutra` for system installs. User installs use `~/.config/lutra`, `~/backups/lutra`, and `$XDG_STATE_HOME/lutra` (or `~/.local/state/lutra`). See [Installation](docs/installation.md) for prerequisites, ownership, updating, and uninstalling.
 
 ### 2. Configure targets and credentials
 
@@ -61,22 +56,22 @@ lutra backup run
 sudo lutra schedule install
 ```
 
-See [Commands](docs/commands.md) for the complete CLI reference and [Operations](docs/operations.md) for restore, verification, retention, bundles, and offsite copies.
+See [Commands](docs/commands.md) for the complete CLI reference and [Operations](docs/operations.md) for restore, verification, retention, and offsite copies.
 
 ## Documentation
 
 - [Installation](docs/installation.md): binary installation, configuration paths, updates, and uninstalling
 - [Commands](docs/commands.md): complete command reference and global options
-- [Configuration](docs/configuration.md): YAML settings, targets, encryption, sync, notifications, and schedules
-- [Operations](docs/operations.md): backup layout, retention, restore, verify, disaster recovery, and offsite copies
-- [Security](docs/security.md): credential handling, encryption, permissions, and isolation guidance
+- [Configuration](docs/configuration.md): YAML settings, targets, sync, notifications, and schedules
+- [Operations](docs/operations.md): backup layout, retention, restore, verify, and offsite copies
+- [Security](docs/security.md): credential handling, permissions, and isolation guidance
 - [Development](docs/development.md): source builds, tests, project structure, and release requirements
 
 ## Requirements
 
 - Linux (Ubuntu 22.04+ or Debian 12+)
-- Docker 20.10+ for database or volume targets
-- Database dump tools installed in the relevant containers
+- Docker 20.10+
+- `pg_dump` and `psql` available in the PostgreSQL containers
 
 Lutra does not require a .NET runtime when installed from a release binary.
 

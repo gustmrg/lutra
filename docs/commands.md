@@ -30,7 +30,7 @@ lutra verify                                 # Verify the latest backup
 lutra verify --target my-postgres --file <PATH>
 ```
 
-`restore` is destructive. It replaces the configured database or file target contents. `verify` performs a non-destructive test restore where supported.
+`restore` is destructive. It replaces the contents of the configured database. `verify` restores into a temporary database and leaves the configured one untouched.
 
 ## History and Maintenance
 
@@ -43,10 +43,6 @@ lutra cleanup --dry-run                      # Preview deletions
 lutra cleanup --orphan-sidecars              # Remove sidecars without artifacts
 lutra cleanup --orphan-files --force         # Remove untracked artifacts
 lutra cleanup --prune-history                # Prune old operational records
-lutra health                                 # Analyze backup health
-lutra health --target my-postgres            # Analyze one target
-lutra health --json                          # Machine-readable health report
-lutra inventory                              # Capture an inventory snapshot
 ```
 
 History statuses have these meanings:
@@ -59,17 +55,15 @@ History statuses have these meanings:
 | `OK` | The operation completed successfully. |
 | `FAILED` | The operation completed with an error. |
 | `CANCELLED` | Lutra observed cancellation and recorded it. |
-| `INTERRUPTED` | A process stopped renewing its lease; completion is unknown and health treats it as failure. |
+| `INTERRUPTED` | A process stopped renewing its lease; completion is unknown. |
 
-## Sync and Disaster Recovery
+## Sync
 
 ```bash
 lutra sync --dry-run                         # Preview an offsite rsync
 lutra sync --target my-postgres              # Sync one target directory
 lutra sync --validate                        # Validate SSH, rsync, and remote access
 lutra sync --delete                          # Explicitly mirror local deletions
-lutra bundle                                 # Bundle latest artifacts and instructions
-lutra bundle --encrypt                       # Encrypt a bundle with the global age recipient
 ```
 
 ## Configuration
@@ -77,7 +71,7 @@ lutra bundle --encrypt                       # Encrypt a bundle with the global 
 ```bash
 lutra config init                            # Create config directories and templates
 lutra config validate                        # Validate configuration
-lutra config validate --preflight            # Also check systemd, Docker, and dump tools
+lutra config validate --preflight            # Also check systemd, Docker, pg_dump, and sync
 lutra config reset                           # Reset config files to template defaults
 ```
 
@@ -92,14 +86,3 @@ sudo lutra schedule remove --target my-postgres
 ```
 
 Schedules use systemd calendar expressions, not cron syntax. See [Configuration](configuration.md#schedules).
-
-## Uninstall
-
-```bash
-sudo lutra uninstall
-sudo lutra uninstall --keep-state            # Keep local history/application state
-sudo lutra uninstall --keep-backups          # Keep backups and implicitly keep state
-sudo lutra uninstall --yes                   # Non-interactive; delete both data directories
-```
-
-Interactive uninstall prompts for backup data and local state separately. `--yes` deletes state only when neither preservation flag is supplied.

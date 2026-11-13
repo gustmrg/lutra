@@ -5,10 +5,10 @@ Lutra runs on Linux and is distributed as a self-contained binary. The normal in
 ## Prerequisites
 
 - Linux (Ubuntu 22.04+ or Debian 12+)
-- Docker 20.10+ for database or volume targets
-- Permission to run Docker commands for database or volume targets
+- Docker 20.10+
+- Permission to run Docker commands
 
-The database tools (`pg_dump`, `sqlcmd`, `mongodump`, or `sqlite3`) must be installed in the containers that contain the databases. File targets run on the host and do not require Docker. Lutra does not require a .NET runtime or SDK for binary installations.
+`pg_dump`, `pg_restore`, and `psql` must be available in the PostgreSQL containers; the official `postgres` images include them. Lutra does not require a .NET runtime or SDK for binary installations.
 
 ## Recommended Installation
 
@@ -106,10 +106,14 @@ Run the same setup command again. Existing configuration and environment files a
 
 ## Uninstalling
 
+Remove the timers first, then delete the binary and the directories you no longer need:
+
 ```bash
-sudo lutra uninstall
-sudo lutra uninstall --keep-state
-sudo lutra uninstall --keep-backups
+sudo lutra schedule remove
+sudo rm /usr/local/bin/lutra
+sudo rm -r /etc/lutra        # configuration and .env
+sudo rm -r /var/lib/lutra    # local history
+sudo rm -r /var/backups/lutra  # the backups themselves
 ```
 
-Interactive uninstall displays and prompts for the resolved state directory separately from backup data. `--keep-state` preserves local history. `--keep-backups` preserves both backup artifacts and state. With `--yes`, state is deleted only when neither preservation flag is present. Export anything you need before using destructive options.
+A user-only installation uses `~/.local/bin/lutra`, `~/.config/lutra`, the user state directory, and `~/backups/lutra` instead. The paths in use are printed by `lutra config validate`.

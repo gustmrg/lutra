@@ -287,7 +287,7 @@ echo -e "${BOLD}Checking prerequisites...${NC}"
 DOCKER_AVAILABLE=false
 if ! command -v docker &> /dev/null; then
     echo -e "${YELLOW}⚠ Docker not found${NC}"
-    echo "  Database and volume targets require Docker."
+    echo "  Lutra backs up databases through Docker."
     echo "  Install Docker: https://docs.docker.com/engine/install/"
 else
     DOCKER_AVAILABLE=true
@@ -404,7 +404,6 @@ retention:
   max_age_days: 30     # Delete backups older than 30 days (when max_count also exceeded)
 
 databases:
-  # PostgreSQL Example
   - name: example-postgres
     type: postgresql
     container: postgres-container    # Docker container name
@@ -414,24 +413,6 @@ databases:
     schedule: "*-*-* 03:00:00"      # Daily at 3 AM (systemd calendar expression)
     format: custom                   # custom (.dump) or plain (.sql)
     compression: gzip
-
-  # MongoDB Example
-  # - name: example-mongo
-  #   type: mongodb
-  #   container: mongo-container
-  #   database: mydb
-  #   schedule: "Sun *-*-* 04:00:00" # Weekly on Sundays at 4 AM
-  #   compression: gzip
-
-  # SQL Server Example
-  # - name: example-sqlserver
-  #   type: sqlserver
-  #   container: sqlserver-container
-  #   database: MyDatabase
-  #   username: sa
-  #   password_env: SQLSERVER_PASSWORD
-  #   schedule: "*-*-* 02:00:00"    # Daily at 2 AM
-  #   compression: gzip
 EOF
 
     # Replace placeholders with actual data directories
@@ -454,14 +435,8 @@ else
 # Lutra Environment Variables
 # Store database passwords here (never commit this file!)
 
-# Example PostgreSQL password
+# PostgreSQL password referenced by password_env in lutra.yaml
 POSTGRES_PASSWORD=your-secret-password-here
-
-# Example MongoDB password (if authentication is enabled)
-# MONGO_PASSWORD=your-mongo-password
-
-# Example SQL Server password
-# SQLSERVER_PASSWORD=your-sqlserver-password
 EOF
 
     chmod 600 "$CONFIG_DIR/.env"
