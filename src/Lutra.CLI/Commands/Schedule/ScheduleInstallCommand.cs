@@ -6,11 +6,11 @@ using Spectre.Console;
 
 namespace Lutra.CLI.Commands.Schedule;
 
-public sealed class ScheduleInstallCommand : LutraCommand<TargetSettings>
+public sealed class ScheduleInstallCommand : LutraCommand<ScheduleInstallSettings>
 {
     private const string SystemdDir = "/etc/systemd/system";
 
-    protected override Task<int> RunAsync(TargetSettings settings)
+    protected override Task<int> RunAsync(ScheduleInstallSettings settings)
     {
         if (!RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
         {
@@ -24,6 +24,7 @@ public sealed class ScheduleInstallCommand : LutraCommand<TargetSettings>
             return Task.FromResult(1);
         }
 
+        var user = ResolveServiceUser(settings.User);
         var config = ServiceFactory.LoadConfig(settings);
         var (configPath, envPath) = ConfigFileHelper.ResolvePaths(settings.ConfigPath, settings.EnvFilePath);
         string[] commonArguments =
@@ -42,6 +43,7 @@ public sealed class ScheduleInstallCommand : LutraCommand<TargetSettings>
                 $"lutra-backup-{target.Name}",
                 $"Lutra backup for {target.Name}",
                 target.Schedule,
+                user,
                 ["backup", "run", "--target", target.Name, .. commonArguments]);
 
             if (target.VerifySchedule is not null)
@@ -50,16 +52,41 @@ public sealed class ScheduleInstallCommand : LutraCommand<TargetSettings>
                     $"lutra-verify-{target.Name}",
                     $"Lutra restore drill for {target.Name}",
                     target.VerifySchedule,
+                    user,
                     ["verify", "--target", target.Name, .. commonArguments]);
             }
         }
 
-        AnsiConsole.MarkupLine($"\nRun [blue]sudo systemctl daemon-reload[/] to load the new units.");
+        AnsiConsole.MarkupLine(
+            $"\nTimers run as [blue]{user.EscapeMarkup()}[/]. That account needs Docker access and must own " +
+            "the backup and state directories.");
+        AnsiConsole.MarkupLine($"Run [blue]sudo systemctl daemon-reload[/] to load the new units.");
         AnsiConsole.MarkupLine("Enable timers with [blue]sudo systemctl enable --now <unit>.timer[/]");
         return Task.FromResult(0);
     }
 
-    private static void InstallUnit(string unitName, string description, string schedule, string[] arguments)
+    // A unit without User= runs as root, which leaves root-owned backups and state
+    // behind for an installation otherwise operated by an ordinary account. The
+    // account is therefore always written out, and never guessed to be root.
+    private static string ResolveServiceUser(string? requested)
+    {
+        var user = requested ?? Environment.GetEnvironmentVariable("SUDO_USER");
+        if (string.IsNullOrWhiteSpace(user))
+        {
+            throw new ConfigurationException(
+                "Cannot tell which account the timers should run as. Pass --user <name> " +
+                "(use --user root to run them as root).");
+        }
+
+        var exists = File.ReadLines("/etc/passwd").Any(line => line.StartsWith(user + ":", StringComparison.Ordinal));
+        if (!exists)
+            throw new ConfigurationException($"Account '{user}' does not exist on this system.");
+
+        return user;
+    }
+
+    private static void InstallUnit(
+        string unitName, string description, string schedule, string user, string[] arguments)
     {
         string[] commandLine = [Environment.ProcessPath ?? "lutra", .. arguments];
         var command = string.Join(' ', commandLine.Select(Quote));
@@ -70,6 +97,7 @@ public sealed class ScheduleInstallCommand : LutraCommand<TargetSettings>
 
             [Service]
             Type=oneshot
+            User={user}
             ExecStart={command}
             """);
 

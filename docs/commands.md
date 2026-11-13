@@ -80,9 +80,12 @@ lutra config reset                           # Reset config files to template de
 ```bash
 sudo lutra schedule install                  # Install timers for all targets
 sudo lutra schedule install --target my-postgres
+sudo lutra schedule install --user backup    # Run the timers as a specific account
 lutra schedule list                          # List timers and status
 sudo lutra schedule remove                   # Remove all Lutra timers
 sudo lutra schedule remove --target my-postgres
 ```
+
+Timers run as the account that invoked `sudo`, or as the one given with `--user`. Run manual commands as that same account so backups and local state keep a single owner.
 
 Schedules use systemd calendar expressions, not cron syntax. See [Configuration](configuration.md#schedules).

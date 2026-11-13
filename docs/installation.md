@@ -75,6 +75,8 @@ sudo lutra schedule install
 lutra schedule list
 ```
 
+The timers run as the account that invoked `sudo`; pass `--user <name>` to choose another. That account needs to be in the `docker` group and to own the backup and state directories. If offsite sync is configured, it also needs the SSH key and the destination host in its `known_hosts`; check with `lutra sync --validate`.
+
 ## Manual Binary Installation
 
 The setup script is recommended because it selects the architecture and verifies the download. To install the archive manually instead:
