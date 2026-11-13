@@ -96,7 +96,6 @@ jobs:
 
           dotnet "$lutra_cli" backup list --config "$RUNNER_TEMP/lutra.yaml"
           dotnet "$lutra_cli" cleanup --dry-run --config "$RUNNER_TEMP/lutra.yaml"
-          dotnet "$lutra_cli" health --config "$RUNNER_TEMP/lutra.yaml"
 
           # Restore the dump into a temporary database and count its tables.
           dotnet "$lutra_cli" verify --target smoke-a --config "$RUNNER_TEMP/lutra.yaml" | tee "$RUNNER_TEMP/verify.out"

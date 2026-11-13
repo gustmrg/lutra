@@ -2,7 +2,6 @@ using Lutra.CLI.Commands;
 using Lutra.CLI.Commands.Config;
 using Lutra.Core.Backup;
 using Lutra.Core.Configuration;
-using Lutra.Core.Health;
 using Lutra.Core.History;
 using Lutra.Core.Notifications;
 using Lutra.Core.Persistence;
@@ -77,16 +76,6 @@ internal static class ServiceFactory
     public static OrphanCleanupService CreateOrphanCleanupService(BackupConfig config)
     {
         return new OrphanCleanupService(config, CreateHistoryService(config));
-    }
-
-    public static AnomalyDetector CreateAnomalyDetector(BackupConfig config)
-    {
-        return new AnomalyDetector(config.Health ?? new HealthConfig());
-    }
-
-    public static BackupArtifactHealthChecker CreateArtifactHealthChecker(BackupConfig config)
-    {
-        return new BackupArtifactHealthChecker(config, CreateHistoryService(config));
     }
 
     public static NotificationService? CreateNotificationService(BackupConfig config)

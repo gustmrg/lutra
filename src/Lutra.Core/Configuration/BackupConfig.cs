@@ -1,5 +1,4 @@
 using Lutra.Core.Encryption;
-using Lutra.Core.Health;
 using Lutra.Core.Notifications;
 using Lutra.Core.Sync;
 using YamlDotNet.Serialization;
@@ -58,8 +57,6 @@ public class BackupConfig
     /// Gets the list of database targets to back up.
     /// </summary>
     public List<DatabaseTarget> Databases { get; init; } = [];
-
-    public HealthConfig? Health { get; init; }
 
     /// <summary>Gets optional outbound notification settings.</summary>
     public NotificationConfig? Notifications { get; init; }

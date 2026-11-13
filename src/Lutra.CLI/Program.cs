@@ -1,7 +1,6 @@
 using Lutra.CLI.Commands.Backup;
 using Lutra.CLI.Commands.Cleanup;
 using Lutra.CLI.Commands.Config;
-using Lutra.CLI.Commands.Health;
 using Lutra.CLI.Commands.History;
 using Lutra.CLI.Commands.Restore;
 using Lutra.CLI.Commands.Schedule;
@@ -47,9 +46,6 @@ app.Configure(config =>
 
     config.AddCommand<CleanupCommand>("cleanup")
         .WithDescription("Apply retention cleanup and optionally remove orphan artifacts or history.");
-
-    config.AddCommand<HealthCommand>("health")
-        .WithDescription("Analyze backup age, integrity, and operational anomalies.");
 
     config.AddCommand<SyncCommand>("sync")
         .WithDescription("Push configured backups to an SSH/rsync destination.");

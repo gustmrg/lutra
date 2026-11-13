@@ -95,14 +95,6 @@ retention:
 #     webhooks:
 #       - url_env: LUTRA_DISCORD_WEBHOOK
 
-# Health check thresholds (optional — sensible defaults are built in)
-# health:
-#   min_samples: 5                 # Minimum backups needed for statistical analysis
-#   window_size: 10                # Number of recent backups to analyze
-#   size_deviation_threshold: 2.0  # Standard deviations for size anomaly
-#   failure_streak_warning: 2      # Consecutive failures before warning
-#   failure_streak_critical: 3     # Consecutive failures before critical alert
-
 databases:
   - name: example-postgres
     type: postgresql
