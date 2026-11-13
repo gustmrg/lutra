@@ -30,6 +30,7 @@ public static class BackupNotificationMapper
             FileSizeBytes = result.FileSizeBytes,
             Destination = string.IsNullOrWhiteSpace(result.FilePath) ? null : Path.GetDirectoryName(result.FilePath),
             Duration = result.Duration,
+            Warning = result.Warning,
             ErrorMessage = result.Success
                 ? null
                 : string.IsNullOrWhiteSpace(result.ErrorMessage) ? "Unknown error" : result.ErrorMessage

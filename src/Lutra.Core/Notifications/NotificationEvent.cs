@@ -47,4 +47,5 @@ public sealed record BackupNotificationDetail
     public string? Destination { get; init; }
     public required TimeSpan Duration { get; init; }
     public string? ErrorMessage { get; init; }
+    public string? Warning { get; init; }
 }
