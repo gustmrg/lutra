@@ -22,7 +22,7 @@ public class DatabaseTarget : IBackupTarget
     public required string Name { get; init; }
 
     /// <summary>
-    /// Gets the type of database (PostgreSQL, SQL Server, or MongoDB).
+    /// Gets the type of database. Only PostgreSQL is supported.
     /// </summary>
     /// <remarks>
     /// Determines which <see cref="Backup.IBackupProvider"/> implementation
@@ -43,10 +43,6 @@ public class DatabaseTarget : IBackupTarget
     /// <summary>
     /// Gets the database username for authentication.
     /// </summary>
-    /// <remarks>
-    /// Required for PostgreSQL and SQL Server. Optional for MongoDB.
-    /// If not specified, database-specific defaults are used (e.g., <c>sa</c> for SQL Server).
-    /// </remarks>
     public string? Username { get; init; }
 
     /// <summary>
@@ -77,12 +73,11 @@ public class DatabaseTarget : IBackupTarget
     public string? VerifySchedule { get; init; }
 
     /// <summary>
-    /// Gets the database-specific dump format.
+    /// Gets the <c>pg_dump</c> format.
     /// </summary>
     /// <remarks>
-    /// For PostgreSQL: <c>"custom"</c> (produces <c>.dump</c> files) or
-    /// <c>"plain"</c> (produces <c>.sql</c> files). Defaults to <c>"custom"</c>.
-    /// Ignored for SQL Server and MongoDB.
+    /// <c>"custom"</c> (produces <c>.dump</c> files) or <c>"plain"</c>
+    /// (produces <c>.sql</c> files). Defaults to <c>"custom"</c>.
     /// </remarks>
     public string? Format { get; init; }
 
@@ -106,12 +101,6 @@ public class DatabaseTarget : IBackupTarget
     public RetentionPolicy? Retention { get; init; }
 
     public EncryptionConfig? Encryption { get; init; }
-
-    /// <summary>SQL Server full, differential, or transaction-log backup mode.</summary>
-    public SqlServerBackupKind SqlServerBackupKind { get; init; } = SqlServerBackupKind.Full;
-
-    /// <summary>MongoDB replica-set backup with mongodump --oplog.</summary>
-    public bool MongoOplog { get; init; }
 
     /// <summary>Host path containing PostgreSQL WAL files produced by archive_command.</summary>
     public string? PostgresWalArchivePath { get; init; }

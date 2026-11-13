@@ -32,7 +32,7 @@ public interface IProcessExecutor
     /// </summary>
     /// <remarks>
     /// Used by restore workflows to pipe backup data into commands such as
-    /// <c>pg_restore</c>, <c>psql</c>, or <c>mongorestore</c> via <c>docker exec -i</c>.
+    /// <c>pg_restore</c> or <c>psql</c> via <c>docker exec -i</c>.
     /// </remarks>
     /// <param name="command">
     /// The Docker exec command specification including container name, executable, arguments,

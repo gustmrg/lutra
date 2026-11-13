@@ -33,13 +33,7 @@ internal static class ServiceFactory
     {
         var historyService = CreateHistoryService(config);
         var processExecutor = new DockerProcessExecutor();
-        IBackupProvider[] providers =
-        [
-            new PostgresBackupProvider(),
-            new SqlServerBackupProvider(),
-            new MongoBackupProvider(),
-            new SqliteBackupProvider()
-        ];
+        IBackupProvider[] providers = [new PostgresBackupProvider()];
         return new BackupOrchestrator(providers, processExecutor, historyService, config);
     }
 
@@ -47,13 +41,7 @@ internal static class ServiceFactory
     {
         var historyService = CreateHistoryService(config);
         var processExecutor = new DockerProcessExecutor();
-        IRestoreProvider[] providers =
-        [
-            new PostgresRestoreProvider(),
-            new SqlServerRestoreProvider(),
-            new MongoRestoreProvider(),
-            new SqliteRestoreProvider()
-        ];
+        IRestoreProvider[] providers = [new PostgresRestoreProvider()];
         return new RestoreOrchestrator(providers, processExecutor, historyService, config);
     }
 
