@@ -3,7 +3,6 @@ using System.IO.Compression;
 using System.Reflection;
 using Lutra.Core.Configuration;
 using Lutra.Core.Encryption;
-using Lutra.Core.Files;
 using Lutra.Core.History;
 
 namespace Lutra.Core.Backup;
@@ -70,34 +69,6 @@ public class BackupOrchestrator
             cancellationToken);
     }
 
-    public async Task<BackupResult> BackupFilesAsync(FileTarget target, CancellationToken cancellationToken = default)
-    {
-        return await RunBackupAsync(
-            target,
-            ".tar",
-            target.Compression,
-            (tempFilePath, _, ct) => FileArchive.CreateAsync(
-                target.Paths, target.Exclude ?? [], tempFilePath, target.Compression, ct),
-            (fileName, fileSize, sha256, startedAt, duration) => new BackupManifest
-            {
-                TargetName = target.Name,
-                TargetType = "files",
-                Paths = target.Paths,
-                BackupFileName = fileName,
-                FileSizeBytes = fileSize,
-                Sha256 = sha256,
-                Compression = target.Compression,
-                StartedAt = startedAt,
-                CompletedAt = DateTime.UtcNow,
-                DurationMs = (long)duration.TotalMilliseconds,
-                LutraVersion = GetVersion(),
-                Success = true,
-                Encrypted = GetEncryption(target) is not null,
-                EncryptionRecipientFingerprint = GetRecipientFingerprint(target)
-            },
-            cancellationToken);
-    }
-
     public async Task<IReadOnlyList<BackupResult>> BackupAllAsync(CancellationToken cancellationToken = default)
     {
         var results = new List<BackupResult>();
@@ -107,24 +78,19 @@ public class BackupOrchestrator
             results.Add(await BackupAsync(target, cancellationToken));
         }
 
-        foreach (var target in _config.Files)
-        {
-            results.Add(await BackupFilesAsync(target, cancellationToken));
-        }
-
         return results;
     }
 
-    public Task<int> CleanupAsync(IBackupTarget target, CancellationToken cancellationToken = default)
+    public Task<int> CleanupAsync(DatabaseTarget target, CancellationToken cancellationToken = default)
         => ApplyRetentionAsync(target, dryRun: false, cancellationToken);
 
     public Task<IReadOnlyList<BackupCleanupCandidate>> PreviewCleanupAsync(
-        IBackupTarget target,
+        DatabaseTarget target,
         CancellationToken cancellationToken = default)
         => GetRetentionCandidatesAsync(target, cancellationToken);
 
     private async Task<BackupResult> RunBackupAsync(
-        IBackupTarget target,
+        DatabaseTarget target,
         string extension,
         CompressionType compression,
         Func<string, string, CancellationToken, Task> writeBackupAsync,
@@ -281,7 +247,7 @@ public class BackupOrchestrator
         }
     }
 
-    private async Task<int> ApplyRetentionAsync(IBackupTarget target, bool dryRun, CancellationToken cancellationToken)
+    private async Task<int> ApplyRetentionAsync(DatabaseTarget target, bool dryRun, CancellationToken cancellationToken)
     {
         var candidates = await GetRetentionCandidatesAsync(target, cancellationToken);
         var deletedCount = 0;
@@ -302,7 +268,7 @@ public class BackupOrchestrator
     }
 
     private async Task<IReadOnlyList<BackupCleanupCandidate>> GetRetentionCandidatesAsync(
-        IBackupTarget target,
+        DatabaseTarget target,
         CancellationToken cancellationToken)
     {
         var retention = target.Retention ?? _config.Retention;
@@ -344,10 +310,10 @@ public class BackupOrchestrator
             .ToList();
     }
 
-    private EncryptionConfig? GetEncryption(IBackupTarget target)
+    private EncryptionConfig? GetEncryption(DatabaseTarget target)
         => target.Encryption ?? _config.Encryption;
 
-    private string? GetRecipientFingerprint(IBackupTarget target)
+    private string? GetRecipientFingerprint(DatabaseTarget target)
         => GetEncryption(target) is { } encryption
             ? AgeEncryption.RecipientFingerprint(encryption.Recipient)
             : null;

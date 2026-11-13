@@ -36,16 +36,9 @@ public sealed record NotificationEvent
     }
 }
 
-public enum BackupNotificationTargetKind
-{
-    Database,
-    Files
-}
-
 public sealed record BackupNotificationDetail
 {
     public required string TargetName { get; init; }
-    public required BackupNotificationTargetKind TargetKind { get; init; }
     public required bool Success { get; init; }
     public string? Database { get; init; }
     public string? Container { get; init; }

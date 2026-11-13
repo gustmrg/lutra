@@ -15,7 +15,7 @@ public sealed class OrphanCleanupService
     }
 
     public async Task<IReadOnlyList<OrphanCandidate>> FindAsync(
-        IBackupTarget target,
+        DatabaseTarget target,
         bool includeUntrackedBackups,
         CancellationToken cancellationToken = default)
     {

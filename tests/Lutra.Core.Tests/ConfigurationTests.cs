@@ -44,9 +44,12 @@ public sealed class ConfigurationTests
             retention:
               max_count: 3
               max_age_days: 7
-            files:
+            databases:
               - name: config
-                paths: [{{path}}]
+                type: postgresql
+                container: postgres
+                database: app
+                username: postgres
                 schedule: daily
             """);
 
@@ -68,9 +71,12 @@ public sealed class ConfigurationTests
             retention:
               max_count: 3
               max_age_days: 7
-            files:
+            databases:
               - name: config
-                paths: [{{path}}]
+                type: postgresql
+                container: postgres
+                database: app
+                username: postgres
                 schedule: daily
             """);
 
@@ -82,11 +88,9 @@ public sealed class ConfigurationTests
     }
 
     [Fact]
-    public void Load_RejectsDuplicateTargetNamesAcrossKinds()
+    public void Load_RejectsDuplicateTargetNames()
     {
         using var temp = new TempDirectory();
-        var source = Path.Combine(temp.Path, "source.txt");
-        File.WriteAllText(source, "data");
         var yaml = $$"""
             backup_directory: {{temp.Path}}/backups
             retention:
@@ -99,9 +103,11 @@ public sealed class ConfigurationTests
                 database: app
                 username: postgres
                 schedule: daily
-            files:
               - name: duplicate
-                paths: [{{source}}]
+                type: postgresql
+                container: postgres
+                database: app
+                username: postgres
                 schedule: daily
             """;
         var path = Path.Combine(temp.Path, "lutra.yaml");
@@ -115,8 +121,6 @@ public sealed class ConfigurationTests
     public void Load_ParsesRetentionModeAndKeepMinimum()
     {
         using var temp = new TempDirectory();
-        var source = Path.Combine(temp.Path, "source.txt");
-        File.WriteAllText(source, "data");
         var path = Path.Combine(temp.Path, "lutra.yaml");
         File.WriteAllText(path, $$"""
             backup_directory: {{temp.Path}}/backups
@@ -125,9 +129,12 @@ public sealed class ConfigurationTests
               max_age_days: 7
               mode: either
               keep_at_least: 2
-            files:
+            databases:
               - name: config
-                paths: [{{source}}]
+                type: postgresql
+                container: postgres
+                database: app
+                username: postgres
                 schedule: daily
             """);
 

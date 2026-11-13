@@ -13,7 +13,7 @@ public sealed class RestoreCommand : AsyncCommand<RestoreSettings>
         {
             var config = ServiceFactory.LoadConfig(settings);
 
-            IBackupTarget? target;
+            DatabaseTarget? target;
             if (settings.Target is not null)
             {
                 target = ServiceFactory.ResolveTarget(config, settings.Target);
@@ -60,12 +60,7 @@ public sealed class RestoreCommand : AsyncCommand<RestoreSettings>
 
             var orchestrator = ServiceFactory.CreateRestoreOrchestrator(config);
 
-            return target switch
-            {
-                DatabaseTarget databaseTarget => await RestoreDatabaseAsync(config, orchestrator, databaseTarget, backupFile, settings),
-                FileTarget fileTarget => await RestoreFilesAsync(config, orchestrator, fileTarget, backupFile, settings),
-                _ => 1
-            };
+            return await RestoreDatabaseAsync(config, orchestrator, target, backupFile, settings);
         }
         catch (ConfigurationException ex)
         {
@@ -110,45 +105,6 @@ public sealed class RestoreCommand : AsyncCommand<RestoreSettings>
             AnsiConsole.MarkupLine(
                 $"[green]Restore completed[/] in {result.Duration.TotalSeconds:0.0}s. " +
                 $"Database '{result.DestinationDatabase?.EscapeMarkup()}' was replaced with the backup contents.");
-            return 0;
-        }
-
-        AnsiConsole.MarkupLine($"[red]Restore failed:[/] {result.ErrorMessage?.EscapeMarkup()}");
-        return 1;
-    }
-
-    private static async Task<int> RestoreFilesAsync(
-        BackupConfig config,
-        Core.Restore.RestoreOrchestrator orchestrator,
-        FileTarget target,
-        string backupFile,
-        RestoreSettings settings)
-    {
-        var destination = settings.Destination ?? "/";
-
-        AnsiConsole.Write(new Panel(
-                $"Archive:     [bold]{Path.GetFileName(backupFile).EscapeMarkup()}[/]\n" +
-                $"Destination: [bold]{destination.EscapeMarkup()}[/]")
-            .Header("[red] DESTRUCTIVE OPERATION [/]")
-            .Border(BoxBorder.Heavy)
-            .BorderStyle(Color.Red));
-        AnsiConsole.MarkupLine(
-            "[red]Files in the archive will overwrite files with the same paths at the destination.[/]");
-
-        if (!Confirm(settings.Force))
-            return 1;
-
-        var result = await AnsiConsole.Status()
-            .StartAsync($"Extracting {target.Name}...", async _ =>
-                await orchestrator.RestoreFilesAsync(target, backupFile, destination));
-
-        await NotifyRestoreAsync(config, target.Name, result.Success);
-
-        if (result.Success)
-        {
-            AnsiConsole.MarkupLine(
-                $"[green]Restore completed[/] in {result.Duration.TotalSeconds:0.0}s. " +
-                $"Archive extracted to '{result.DestinationDatabase?.EscapeMarkup()}'.");
             return 0;
         }
 

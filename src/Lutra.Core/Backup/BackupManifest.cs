@@ -29,10 +29,6 @@ public sealed class BackupManifest
     /// <summary>
     /// The configured source paths, present for <c>"files"</c> backups.
     /// </summary>
-    [JsonPropertyName("paths")]
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public IReadOnlyList<string>? Paths { get; init; }
-
     [JsonPropertyName("backup_file_name")]
     public required string BackupFileName { get; init; }
 

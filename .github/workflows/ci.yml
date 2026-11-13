@@ -30,22 +30,40 @@ jobs:
       - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
+      - name: Start PostgreSQL
+        run: |
+          docker run -d --name lutra-smoke-db \
+            -e POSTGRES_PASSWORD=smoke -e POSTGRES_DB=smoke postgres:17-alpine
+          # The image restarts the server once during initialization; only the
+          # final instance listens on TCP, so probe 127.0.0.1 rather than the socket.
+          for attempt in $(seq 1 60); do
+            if docker exec lutra-smoke-db pg_isready -h 127.0.0.1 -U postgres -d smoke; then
+              break
+            fi
+            sleep 1
+          done
+          docker exec lutra-smoke-db psql -U postgres -d smoke -v ON_ERROR_STOP=1 \
+            -c "CREATE TABLE smoke (id integer PRIMARY KEY); INSERT INTO smoke VALUES (1), (2), (3);"
       - name: Create smoke configuration
         run: |
-          mkdir -p "$RUNNER_TEMP/lutra-source-a" "$RUNNER_TEMP/lutra-source-b" "$RUNNER_TEMP/lutra-backups"
-          echo smoke-a > "$RUNNER_TEMP/lutra-source-a/config.txt"
-          echo smoke-b > "$RUNNER_TEMP/lutra-source-b/config.txt"
+          mkdir -p "$RUNNER_TEMP/lutra-backups"
           cat > "$RUNNER_TEMP/lutra.yaml" <<EOF
           backup_directory: $RUNNER_TEMP/lutra-backups
           retention:
             max_count: 3
             max_age_days: 7
-          files:
+          databases:
             - name: smoke-a
-              paths: [$RUNNER_TEMP/lutra-source-a/config.txt]
+              type: postgresql
+              container: lutra-smoke-db
+              database: smoke
+              username: postgres
               schedule: daily
             - name: smoke-b
-              paths: [$RUNNER_TEMP/lutra-source-b/config.txt]
+              type: postgresql
+              container: lutra-smoke-db
+              database: smoke
+              username: postgres
               schedule: daily
           EOF
       - name: Run CLI smoke tests
@@ -66,6 +84,7 @@ jobs:
           wait "$pid_b"
           status_b=$?
           set -e
+          cat "$RUNNER_TEMP/smoke-a.out" "$RUNNER_TEMP/smoke-b.out"
           test "$status_a" -eq 0
           test "$status_b" -eq 0
           ! grep -i "busy" "$RUNNER_TEMP/smoke-a.out" "$RUNNER_TEMP/smoke-b.out"
@@ -78,6 +97,11 @@ jobs:
           dotnet "$lutra_cli" backup list --config "$RUNNER_TEMP/lutra.yaml"
           dotnet "$lutra_cli" cleanup --dry-run --config "$RUNNER_TEMP/lutra.yaml"
           dotnet "$lutra_cli" health --config "$RUNNER_TEMP/lutra.yaml"
+
+          # Restore the dump into a temporary database and count its tables.
+          dotnet "$lutra_cli" verify --target smoke-a --config "$RUNNER_TEMP/lutra.yaml" | tee "$RUNNER_TEMP/verify.out"
+          grep -q "Verification passed" "$RUNNER_TEMP/verify.out"
+          grep -q "contains 1 user tables" "$RUNNER_TEMP/verify.out"
 
   release-artifacts:
     runs-on: ubuntu-latest

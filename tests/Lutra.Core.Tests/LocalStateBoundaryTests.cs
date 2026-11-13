@@ -63,10 +63,12 @@ public sealed class LocalStateBoundaryTests
     {
         using var temp = new TempDirectory();
         var config = CreateConfig(temp);
-        config.Files.Add(new FileTarget
+        config.Databases.Add(new DatabaseTarget
         {
             Name = "aaa",
-            Paths = [temp.Path],
+            Type = DatabaseType.PostgreSql,
+            Container = "postgres",
+            Database = "app",
             Schedule = "daily"
         });
         Directory.CreateDirectory(config.BackupDirectory);
@@ -139,12 +141,14 @@ public sealed class LocalStateBoundaryTests
             StateDirectory = Path.Combine(backupDirectory, ".lutra-state"),
             ConfigPath = Path.Combine(temp.Path, "lutra.yaml"),
             Retention = new RetentionPolicy(),
-            Files =
+            Databases =
             [
-                new FileTarget
+                new DatabaseTarget
                 {
                     Name = "files",
-                    Paths = [temp.Path],
+                    Type = DatabaseType.PostgreSql,
+                    Container = "postgres",
+                    Database = "app",
                     Schedule = "daily"
                 }
             ],

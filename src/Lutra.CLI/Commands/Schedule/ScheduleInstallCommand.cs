@@ -34,8 +34,8 @@ public sealed class ScheduleInstallCommand : AsyncCommand<TargetSettings>
                 settings.EnvFilePath);
 
             var targets = settings.Target is not null
-                ? new List<IBackupTarget> { ServiceFactory.ResolveTarget(config, settings.Target) }
-                : config.AllTargets().ToList();
+                ? new List<DatabaseTarget> { ServiceFactory.ResolveTarget(config, settings.Target) }
+                : config.Databases.ToList();
 
             foreach (var target in targets)
             {
@@ -43,10 +43,10 @@ public sealed class ScheduleInstallCommand : AsyncCommand<TargetSettings>
                 InstallUnit(unitName, target, lutraPath, resolvedConfigPath, resolvedEnvPath);
                 AnsiConsole.MarkupLine($"  [green]Installed[/] {unitName}.timer ({target.Schedule.EscapeMarkup()})");
 
-                if (target is DatabaseTarget { VerifySchedule: not null } database)
+                if (target.VerifySchedule is not null)
                 {
-                    InstallVerifyUnit(database, lutraPath, resolvedConfigPath, resolvedEnvPath);
-                    AnsiConsole.MarkupLine($"  [green]Installed[/] lutra-verify-{database.Name}.timer ({database.VerifySchedule!.EscapeMarkup()})");
+                    InstallVerifyUnit(target, lutraPath, resolvedConfigPath, resolvedEnvPath);
+                    AnsiConsole.MarkupLine($"  [green]Installed[/] lutra-verify-{target.Name}.timer ({target.VerifySchedule.EscapeMarkup()})");
                 }
             }
 
@@ -93,7 +93,7 @@ public sealed class ScheduleInstallCommand : AsyncCommand<TargetSettings>
         File.WriteAllText(Path.Combine(SystemdDir, $"{unitName}.timer"), timerContent);
     }
 
-    private static void InstallUnit(string unitName, IBackupTarget target, string lutraPath, string configPath, string envFilePath)
+    private static void InstallUnit(string unitName, DatabaseTarget target, string lutraPath, string configPath, string envFilePath)
     {
         var serviceContent = $"""
             [Unit]

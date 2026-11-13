@@ -13,14 +13,9 @@ public sealed class LinuxCliProcessConcurrencyTests
             return;
 
         using var temp = new TempDirectory();
-        var sourceA = Path.Combine(temp.Path, "source-a");
-        var sourceB = Path.Combine(temp.Path, "source-b");
         var backupDirectory = Path.Combine(temp.Path, "backups");
         var stateDirectory = Path.Combine(temp.Path, "state");
-        Directory.CreateDirectory(sourceA);
-        Directory.CreateDirectory(sourceB);
-        await File.WriteAllTextAsync(Path.Combine(sourceA, "a.txt"), new string('a', 256 * 1024));
-        await File.WriteAllTextAsync(Path.Combine(sourceB, "b.txt"), new string('b', 256 * 1024));
+        WriteFakeDocker(temp);
 
         var configPath = Path.Combine(temp.Path, "lutra.yaml");
         await File.WriteAllTextAsync(configPath, $$"""
@@ -29,12 +24,18 @@ public sealed class LinuxCliProcessConcurrencyTests
             retention:
               max_count: 20
               max_age_days: 30
-            files:
-              - name: files-a
-                paths: [{{sourceA}}]
+            databases:
+              - name: db-a
+                type: postgresql
+                container: postgres
+                database: app
+                username: postgres
                 schedule: daily
-              - name: files-b
-                paths: [{{sourceB}}]
+              - name: db-b
+                type: postgresql
+                container: postgres
+                database: app
+                username: postgres
                 schedule: daily
             """);
 
@@ -43,8 +44,8 @@ public sealed class LinuxCliProcessConcurrencyTests
         for (var round = 0; round < overlapRounds; round++)
         {
             var pair = await Task.WhenAll(
-                RunCliAsync(configPath, "backup", "run", "--target", "files-a"),
-                RunCliAsync(configPath, "backup", "run", "--target", "files-b"));
+                RunCliAsync(configPath, "backup", "run", "--target", "db-a"),
+                RunCliAsync(configPath, "backup", "run", "--target", "db-b"));
             results.AddRange(pair);
         }
 
@@ -77,10 +78,8 @@ public sealed class LinuxCliProcessConcurrencyTests
             return;
 
         using var temp = new TempDirectory();
-        var sourcePath = Path.Combine(temp.Path, "source.txt");
         var backupDirectory = Path.Combine(temp.Path, "backups");
         var stateDirectory = Path.Combine(temp.Path, "state");
-        await File.WriteAllTextAsync(sourcePath, "source");
         Directory.CreateDirectory(backupDirectory);
         Directory.CreateDirectory(stateDirectory);
         var configPath = Path.Combine(temp.Path, "lutra.yaml");
@@ -90,9 +89,12 @@ public sealed class LinuxCliProcessConcurrencyTests
             retention:
               max_count: 3
               max_age_days: 7
-            files:
+            databases:
               - name: files
-                paths: [{{sourcePath}}]
+                type: postgresql
+                container: postgres
+                database: app
+                username: postgres
                 schedule: daily
             """);
 
@@ -124,11 +126,8 @@ public sealed class LinuxCliProcessConcurrencyTests
             return;
 
         using var temp = new TempDirectory();
-        var sourceA = Path.Combine(temp.Path, "smoke-a.txt");
-        var sourceB = Path.Combine(temp.Path, "smoke-b.txt");
         var backupDirectory = Path.Combine(temp.Path, "backups");
-        await File.WriteAllTextAsync(sourceA, "smoke-a");
-        await File.WriteAllTextAsync(sourceB, "smoke-b");
+        WriteFakeDocker(temp);
         Directory.CreateDirectory(backupDirectory);
         var configPath = Path.Combine(temp.Path, "lutra.yaml");
         await File.WriteAllTextAsync(configPath, $$"""
@@ -136,12 +135,18 @@ public sealed class LinuxCliProcessConcurrencyTests
             retention:
               max_count: 3
               max_age_days: 7
-            files:
+            databases:
               - name: smoke-a
-                paths: [{{sourceA}}]
+                type: postgresql
+                container: postgres
+                database: app
+                username: postgres
                 schedule: daily
               - name: smoke-b
-                paths: [{{sourceB}}]
+                type: postgresql
+                container: postgres
+                database: app
+                username: postgres
                 schedule: daily
             """);
         var validation = await RunCliAsync(configPath, "config", "validate");
@@ -186,6 +191,9 @@ public sealed class LinuxCliProcessConcurrencyTests
         startInfo.ArgumentList.Add("--config");
         startInfo.ArgumentList.Add(configPath);
         startInfo.Environment["DOTNET_NOLOGO"] = "1";
+        startInfo.Environment["PATH"] =
+            FakeDockerDirectory(Path.GetDirectoryName(configPath)!) + Path.PathSeparator
+            + Environment.GetEnvironmentVariable("PATH");
 
         using var process = Process.Start(startInfo)
             ?? throw new InvalidOperationException("Could not start the Lutra CLI process.");
@@ -196,6 +204,25 @@ public sealed class LinuxCliProcessConcurrencyTests
             process.ExitCode,
             await standardOutput,
             await standardError);
+    }
+
+    private static string FakeDockerDirectory(string root) => Path.Combine(root, "fake-bin");
+
+    // Stands in for `docker exec <container> pg_dump ...` so the CLI can run a
+    // full backup without a database. The dump is large enough for two
+    // processes to overlap.
+    private static void WriteFakeDocker(TempDirectory temp)
+    {
+        if (!OperatingSystem.IsLinux())
+            return;
+
+        var directory = FakeDockerDirectory(temp.Path);
+        Directory.CreateDirectory(directory);
+        var script = Path.Combine(directory, "docker");
+        File.WriteAllText(script, "#!/bin/sh\nhead -c 262144 /dev/zero\n");
+        File.SetUnixFileMode(
+            script,
+            UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
     }
 
     private static string FindCliAssembly()

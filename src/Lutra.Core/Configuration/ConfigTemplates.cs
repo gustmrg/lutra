@@ -114,20 +114,6 @@ databases:
     # verify_schedule: "Sun *-*-* 05:00:00" # Optional restore drill timer
     format: custom                   # custom (.dump) or plain (.sql)
     compression: gzip
-
-# File targets back up configuration files as tar archives.
-# Use them for compose files, .env files, reverse proxy configs, and certificates.
-# Do NOT use them for system state (packages, users, firewall) — recreate that instead.
-# files:
-#   - name: app-config
-#     paths:
-#       - /opt/myapp                  # directories are archived recursively
-#       - /etc/nginx/nginx.conf       # single files work too
-#     exclude:
-#       - "*.log"                     # glob patterns: * (any chars), ? (single char)
-#       - node_modules                # also matches any path segment with this name
-#     schedule: "*-*-* 03:30:00"
-#     compression: gzip
 """;
     }
 

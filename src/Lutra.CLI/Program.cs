@@ -21,7 +21,7 @@ app.Configure(config =>
 
     config.AddBranch<CommandSettings>("backup", backup =>
     {
-        backup.SetDescription("Run and manage backups for databases and files.");
+        backup.SetDescription("Run and manage database backups.");
 
         backup.AddCommand<BackupRunCommand>("run")
             .WithDescription("Run backups for all configured targets or one target.");
