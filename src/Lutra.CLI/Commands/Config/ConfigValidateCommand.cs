@@ -151,17 +151,6 @@ public sealed class ConfigValidateCommand : AsyncCommand<ConfigValidateSettings>
             }
         }
 
-        if (config.Databases.Any(target => target.Encryption is not null) || config.Encryption is not null)
-        {
-            if (!await CommandSucceedsAsync("age", ["--version"]))
-            {
-                AnsiConsole.MarkupLine("[red]Encryption:[/] age is configured but the 'age' executable was not found.");
-                failed = true;
-            }
-            else
-                AnsiConsole.MarkupLine("  Encryption: [green]age is available[/]");
-        }
-
         if (config.Sync is not null)
         {
             var syncValidation = await ServiceFactory.CreateRsyncService(config).ValidateAsync();

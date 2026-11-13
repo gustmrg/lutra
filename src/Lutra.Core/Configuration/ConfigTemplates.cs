@@ -66,11 +66,6 @@ public static class ConfigTemplates
 backup_directory: {backupDirectory}
 state_directory: {stateDirectory}
 
-# Optional global encryption (public recipient only; never put the identity key here).
-# encryption:
-#   type: age
-#   recipient: age1replace_with_your_public_recipient
-
 retention:
   max_count: 10        # Keep at most 10 backups per target
   max_age_days: 30     # Age threshold
