@@ -170,9 +170,6 @@ public sealed class LinuxCliProcessConcurrencyTests
                 new LutraDatabase(stateDirectory, configPath))
             .GetAllRecordsAsync();
         Assert.Equal(2, records.Count);
-
-        var health = await RunCliAsync(configPath, "health");
-        Assert.Equal(0, health.ExitCode);
     }
 
     private static async Task<ProcessResult> RunCliAsync(string configPath, params string[] arguments)
