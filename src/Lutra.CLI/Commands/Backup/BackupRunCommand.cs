@@ -22,7 +22,7 @@ public sealed class BackupRunCommand : AsyncCommand<TargetSettings>
             {
                 var target = ServiceFactory.ResolveTarget(config, settings.Target);
                 var result = await AnsiConsole.Status()
-                    .StartAsync($"Backing up {target.Name}...", _ => orchestrator.BackupAsync(target));
+                    .StartAsync($"Backing up {target.Name}...", _ => orchestrator.BackupAsync(target, AppCancellation.Token));
 
                 results = [result];
             }
@@ -30,7 +30,7 @@ public sealed class BackupRunCommand : AsyncCommand<TargetSettings>
             {
                 results = await AnsiConsole.Status()
                     .StartAsync("Running backups for all targets...", async _ =>
-                        await orchestrator.BackupAllAsync());
+                        await orchestrator.BackupAllAsync(AppCancellation.Token));
             }
 
             PrintResults(results);
@@ -51,7 +51,7 @@ public sealed class BackupRunCommand : AsyncCommand<TargetSettings>
             {
                 var sync = await AnsiConsole.Status()
                     .StartAsync("Syncing completed backups offsite...", _ =>
-                        ServiceFactory.CreateRsyncService(config).SyncAsync(settings.Target, dryRun: false, delete: false));
+                        ServiceFactory.CreateRsyncService(config).SyncAsync(settings.Target, dryRun: false, delete: false, AppCancellation.Token));
                 syncSucceeded = sync.Success;
                 if (sync.Success)
                     AnsiConsole.MarkupLine("[green]Post-backup offsite sync completed.[/]");

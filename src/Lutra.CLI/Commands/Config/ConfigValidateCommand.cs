@@ -155,7 +155,7 @@ public sealed class ConfigValidateCommand : AsyncCommand<ConfigValidateSettings>
 
         if (config.Sync is not null)
         {
-            var syncValidation = await ServiceFactory.CreateRsyncService(config).ValidateAsync();
+            var syncValidation = await ServiceFactory.CreateRsyncService(config).ValidateAsync(AppCancellation.Token);
             if (syncValidation.Success)
                 AnsiConsole.MarkupLine("  Offsite sync: [green]reachable and writable[/]");
             else
@@ -193,7 +193,7 @@ public sealed class ConfigValidateCommand : AsyncCommand<ConfigValidateSettings>
 
     private static async Task<string?> CommandOutputAsync(string fileName, IReadOnlyList<string> args)
     {
-        var outcome = await Processes.RunAsync(new ProcessRequest(fileName, args));
+        var outcome = await Processes.RunAsync(new ProcessRequest(fileName, args), AppCancellation.Token);
         if (!outcome.IsSuccess)
             return null;
 
@@ -204,5 +204,5 @@ public sealed class ConfigValidateCommand : AsyncCommand<ConfigValidateSettings>
     }
 
     private static async Task<bool> CommandSucceedsAsync(string fileName, IReadOnlyList<string> args)
-        => (await Processes.RunAsync(new ProcessRequest(fileName, args))).IsSuccess;
+        => (await Processes.RunAsync(new ProcessRequest(fileName, args), AppCancellation.Token)).IsSuccess;
 }
