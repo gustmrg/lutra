@@ -22,10 +22,6 @@ public class DatabaseTarget
     /// <summary>
     /// Gets the type of database. Only PostgreSQL is supported.
     /// </summary>
-    /// <remarks>
-    /// Determines which <see cref="Backup.IBackupProvider"/> implementation
-    /// is used to generate the backup command.
-    /// </remarks>
     public required DatabaseType Type { get; init; }
 
     /// <summary>

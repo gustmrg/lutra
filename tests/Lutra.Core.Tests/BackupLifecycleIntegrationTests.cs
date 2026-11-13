@@ -15,7 +15,7 @@ public sealed class BackupLifecycleIntegrationTests
         var (config, target, history) = CreateDatabaseScenario(temp);
         var executor = new BlockingProcessExecutor();
         var orchestrator = new BackupOrchestrator(
-            [new StreamingTestProvider()], executor, history, config);
+            executor, history, config);
 
         var backupTask = orchestrator.BackupAsync(target);
         await executor.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
@@ -40,7 +40,7 @@ public sealed class BackupLifecycleIntegrationTests
         var (config, target, history) = CreateDatabaseScenario(temp);
         var executor = new BlockingProcessExecutor();
         var orchestrator = new BackupOrchestrator(
-            [new StreamingTestProvider()], executor, history, config);
+            executor, history, config);
         using var cancellation = new CancellationTokenSource();
 
         var backupTask = orchestrator.BackupAsync(target, cancellation.Token);
@@ -66,7 +66,7 @@ public sealed class BackupLifecycleIntegrationTests
         var executor = new BlockingProcessExecutor();
         executor.Release.TrySetResult();
         var orchestrator = new BackupOrchestrator(
-            [new StreamingTestProvider()], executor, failingHistory, config);
+            executor, failingHistory, config);
 
         var result = await orchestrator.BackupAsync(target);
 
@@ -92,7 +92,7 @@ public sealed class BackupLifecycleIntegrationTests
         using var temp = new TempDirectory();
         var (config, target, history) = CreateDatabaseScenario(temp);
         var orchestrator = new RestoreOrchestrator(
-            [], new NeverProcessExecutor(), history, config);
+            new NeverProcessExecutor(), history, config);
 
         var result = await orchestrator.TestRestoreAsync(
             target, Path.Combine(temp.Path, "missing.dump"));
@@ -131,16 +131,6 @@ public sealed class BackupLifecycleIntegrationTests
     private static SqliteBackupHistoryRepository CreateHistory(BackupConfig config)
         => new(new LutraDatabase(
             config.StateDirectory!, config.ConfigPath!));
-
-    private sealed class StreamingTestProvider : IBackupProvider
-    {
-        public DatabaseType Type => DatabaseType.PostgreSql;
-
-        public DockerExecCommand BuildDumpCommand(DatabaseTarget target, string backupId)
-            => new(target.Container, "fake-dump", []);
-
-        public string GetFileExtension(DatabaseTarget target) => ".dump";
-    }
 
     private sealed class BlockingProcessExecutor : IProcessExecutor
     {

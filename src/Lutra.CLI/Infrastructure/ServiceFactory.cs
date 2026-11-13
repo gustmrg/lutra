@@ -32,16 +32,14 @@ internal static class ServiceFactory
     {
         var historyService = CreateHistoryService(config);
         var processExecutor = new DockerProcessExecutor();
-        IBackupProvider[] providers = [new PostgresBackupProvider()];
-        return new BackupOrchestrator(providers, processExecutor, historyService, config);
+        return new BackupOrchestrator(processExecutor, historyService, config);
     }
 
     public static RestoreOrchestrator CreateRestoreOrchestrator(BackupConfig config)
     {
         var historyService = CreateHistoryService(config);
         var processExecutor = new DockerProcessExecutor();
-        IRestoreProvider[] providers = [new PostgresRestoreProvider()];
-        return new RestoreOrchestrator(providers, processExecutor, historyService, config);
+        return new RestoreOrchestrator(processExecutor, historyService, config);
     }
 
     public static IBackupHistoryService CreateHistoryService(BackupConfig config)

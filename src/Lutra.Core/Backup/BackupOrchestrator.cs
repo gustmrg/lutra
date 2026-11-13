@@ -3,23 +3,21 @@ using System.IO.Compression;
 using System.Reflection;
 using Lutra.Core.Configuration;
 using Lutra.Core.History;
+using Lutra.Core.Postgres;
 
 namespace Lutra.Core.Backup;
 
 public class BackupOrchestrator
 {
-    private readonly IReadOnlyDictionary<DatabaseType, IBackupProvider> _providers;
     private readonly IProcessExecutor _processExecutor;
     private readonly IBackupHistoryService _historyService;
     private readonly BackupConfig _config;
 
     public BackupOrchestrator(
-        IEnumerable<IBackupProvider> providers,
         IProcessExecutor processExecutor,
         IBackupHistoryService historyService,
         BackupConfig config)
     {
-        _providers = providers.ToDictionary(p => p.Type);
         _processExecutor = processExecutor;
         _historyService = historyService;
         _config = config;
@@ -27,24 +25,12 @@ public class BackupOrchestrator
 
     public async Task<BackupResult> BackupAsync(DatabaseTarget target, CancellationToken cancellationToken = default)
     {
-        if (!_providers.TryGetValue(target.Type, out var provider))
-        {
-            return new BackupResult
-            {
-                TargetName = target.Name,
-                Success = false,
-                Timestamp = DateTime.UtcNow,
-                Duration = TimeSpan.Zero,
-                ErrorMessage = $"No backup provider registered for database type '{target.Type}'."
-            };
-        }
-
         return await RunBackupAsync(
             target,
-            provider.GetFileExtension(target),
+            PostgresCommands.DumpFileExtension(target),
             target.Compression,
-            (tempFilePath, backupId, ct) => ExecuteStreamingBackup(
-                provider.BuildDumpCommand(target, backupId), tempFilePath, target.Compression, ct),
+            (tempFilePath, ct) => ExecuteStreamingBackup(
+                PostgresCommands.Dump(target), tempFilePath, target.Compression, ct),
             (fileName, fileSize, sha256, startedAt, duration) => new BackupManifest
             {
                 TargetName = target.Name,
@@ -90,7 +76,7 @@ public class BackupOrchestrator
         DatabaseTarget target,
         string extension,
         CompressionType compression,
-        Func<string, string, CancellationToken, Task> writeBackupAsync,
+        Func<string, CancellationToken, Task> writeBackupAsync,
         Func<string, long, string, DateTime, TimeSpan, BackupManifest> createManifest,
         CancellationToken cancellationToken)
     {
@@ -118,7 +104,7 @@ public class BackupOrchestrator
             finalFilePath = Path.Combine(targetDir, fileName);
             tempFilePath = Path.Combine(targetDir, $".{fileName}.tmp");
 
-            await writeBackupAsync(tempFilePath, backupId, cancellationToken);
+            await writeBackupAsync(tempFilePath, cancellationToken);
 
             File.Move(tempFilePath, finalFilePath);
             finalMoved = true;
