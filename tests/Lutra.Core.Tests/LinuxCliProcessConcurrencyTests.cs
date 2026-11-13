@@ -54,7 +54,7 @@ public sealed class LinuxCliProcessConcurrencyTests
             result => (result.StandardOutput + result.StandardError)
                 .Contains("busy", StringComparison.OrdinalIgnoreCase));
 
-        var database = new LutraDatabase(stateDirectory, configPath, backupDirectory);
+        var database = new LutraDatabase(stateDirectory, configPath);
         var repository = new SqliteBackupHistoryRepository(database);
         var records = await repository.GetAllRecordsAsync();
 
@@ -118,7 +118,7 @@ public sealed class LinuxCliProcessConcurrencyTests
     }
 
     [Fact]
-    public async Task CliSmoke_ImportsLegacyJsonAndReportsConcurrentBackupStates()
+    public async Task CliSmoke_ReportsConcurrentBackupStates()
     {
         if (!OperatingSystem.IsLinux())
             return;
@@ -144,26 +144,10 @@ public sealed class LinuxCliProcessConcurrencyTests
                 paths: [{{sourceB}}]
                 schedule: daily
             """);
-        var legacyPath = Path.Combine(backupDirectory, "backup-history.json");
-        var legacyBytes = """
-            [
-              {
-                "target_name": "legacy-files",
-                "timestamp": "2026-08-01T12:00:00Z",
-                "file_name": "legacy.tar.gz",
-                "file_size_bytes": 42,
-                "duration_ms": 10,
-                "success": true
-              }
-            ]
-            """u8.ToArray();
-        await File.WriteAllBytesAsync(legacyPath, legacyBytes);
-
         var validation = await RunCliAsync(configPath, "config", "validate");
         Assert.Equal(0, validation.ExitCode);
         Assert.Contains("State directory compatibility fallback", validation.StandardOutput);
         Assert.Contains("writable (SQLite WAL)", validation.StandardOutput);
-        Assert.Equal(legacyBytes, await File.ReadAllBytesAsync(legacyPath));
 
         var backups = await Task.WhenAll(
             RunCliAsync(configPath, "backup", "run", "--target", "smoke-a"),
@@ -172,18 +156,15 @@ public sealed class LinuxCliProcessConcurrencyTests
 
         var history = await RunCliAsync(configPath, "history");
         Assert.Equal(0, history.ExitCode);
-        Assert.Contains("legacy-", history.StandardOutput);
         Assert.Contains("smoke-a", history.StandardOutput);
         Assert.Contains("smoke-b", history.StandardOutput);
-        Assert.Equal(3, CountOccurrences(history.StandardOutput, "OK"));
-        Assert.Equal(legacyBytes, await File.ReadAllBytesAsync(legacyPath));
+        Assert.Equal(2, CountOccurrences(history.StandardOutput, "OK"));
 
         var stateDirectory = Path.Combine(backupDirectory, ".lutra-state");
         var records = await new SqliteBackupHistoryRepository(
-                new LutraDatabase(stateDirectory, configPath, backupDirectory))
+                new LutraDatabase(stateDirectory, configPath))
             .GetAllRecordsAsync();
-        Assert.Equal(3, records.Count);
-        Assert.Contains(records, record => record.TargetName == "legacy-files");
+        Assert.Equal(2, records.Count);
 
         var health = await RunCliAsync(configPath, "health");
         Assert.Equal(0, health.ExitCode);

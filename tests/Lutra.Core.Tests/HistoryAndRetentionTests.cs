@@ -80,8 +80,7 @@ public sealed class HistoryAndRetentionTests
     private static SqliteBackupHistoryRepository CreateHistory(TempDirectory temp)
         => new(new LutraDatabase(
             Path.Combine(temp.Path, "state"),
-            Path.Combine(temp.Path, "lutra.yaml"),
-            temp.Path));
+            Path.Combine(temp.Path, "lutra.yaml")));
 
     private sealed class NeverProcessExecutor : IProcessExecutor
     {

@@ -162,8 +162,7 @@ public sealed class LocalStateBoundaryTests
     private static SqliteBackupHistoryRepository CreateHistory(BackupConfig config)
         => new(new LutraDatabase(
             config.StateDirectory!,
-            config.ConfigPath!,
-            config.BackupDirectory));
+            config.ConfigPath!));
 
     private sealed class CapturingRsyncRunner : IRsyncProcessRunner
     {
