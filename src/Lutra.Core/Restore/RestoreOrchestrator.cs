@@ -4,7 +4,6 @@ using Lutra.Core.Backup;
 using Lutra.Core.Configuration;
 using Lutra.Core.Files;
 using Lutra.Core.History;
-using Lutra.Core.Volumes;
 
 namespace Lutra.Core.Restore;
 
@@ -303,52 +302,6 @@ public class RestoreOrchestrator
             };
         }
     }
-
-    public async Task<RestoreResult> RestoreVolumeAsync(
-        VolumeTarget target,
-        string archiveFilePath,
-        CancellationToken cancellationToken = default)
-    {
-        var stopwatch = Stopwatch.StartNew();
-        try
-        {
-            EnsureNotEncrypted(archiveFilePath);
-            var integrity = await BackupIntegrity.VerifyFileAsync(archiveFilePath, cancellationToken);
-            if (!integrity.Success)
-                throw new InvalidOperationException($"Integrity check failed: {integrity.Message}");
-            await using var targetLock = TargetLock.Acquire(_config.BackupDirectory, target.Name, "Restore");
-            var compression = archiveFilePath.EndsWith(".gz", StringComparison.OrdinalIgnoreCase)
-                ? CompressionType.Gzip
-                : CompressionType.None;
-            await DockerVolumeArchive.RestoreAsync(target.Volume, archiveFilePath, compression, cancellationToken);
-            stopwatch.Stop();
-            return new RestoreResult
-            {
-                TargetName = target.Name,
-                Success = true,
-                Duration = stopwatch.Elapsed,
-                DestinationDatabase = target.Volume
-            };
-        }
-        catch (Exception ex)
-        {
-            stopwatch.Stop();
-            return new RestoreResult
-            {
-                TargetName = target.Name,
-                Success = false,
-                Duration = stopwatch.Elapsed,
-                DestinationDatabase = target.Volume,
-                ErrorMessage = ex.Message
-            };
-        }
-    }
-
-    public Task<VerifyResult> VerifyVolumeAsync(
-        VolumeTarget target,
-        string archiveFilePath,
-        CancellationToken cancellationToken = default)
-        => VerifyArchiveAsync(target, archiveFilePath, cancellationToken);
 
     /// <summary>
     /// Verifies a file-target archive by checking its checksum sidecar and reading

@@ -26,7 +26,6 @@ public sealed class BackupRunCommand : AsyncCommand<TargetSettings>
                     {
                         DatabaseTarget db => await orchestrator.BackupAsync(db),
                         FileTarget files => await orchestrator.BackupFilesAsync(files),
-                        VolumeTarget volume => await orchestrator.BackupVolumeAsync(volume),
                         _ => throw new ConfigurationException($"Unknown target type for '{target.Name}'.")
                     });
 
