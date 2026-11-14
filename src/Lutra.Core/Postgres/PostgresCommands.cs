@@ -71,8 +71,11 @@ public static class PostgresCommands
         ];
     }
 
+    // template0 holds nothing added after initdb and is never checked for a stale
+    // collation version, so a restore cannot fail or inherit objects because of
+    // what happened to template1.
     public static DockerExecCommand CreateDatabase(DatabaseTarget target, string database)
-        => Sql(target, "postgres", $"CREATE DATABASE {QuoteIdentifier(database)}");
+        => Sql(target, "postgres", $"CREATE DATABASE {QuoteIdentifier(database)} TEMPLATE template0");
 
     public static DockerExecCommand DropDatabase(DatabaseTarget target, string database)
         => Sql(target, "postgres", $"DROP DATABASE IF EXISTS {QuoteIdentifier(database)} WITH (FORCE)");
