@@ -8,6 +8,8 @@ namespace Lutra.Core.Sync;
 
 public sealed class RsyncService
 {
+    private const string ProbeFileName = ".lutra-sync-check";
+
     private readonly BackupConfig _config;
     private readonly IBackupHistoryService _history;
     private readonly IProcessRunner _processes;
@@ -35,11 +37,31 @@ public sealed class RsyncService
         if (localRsync.ExitCode != 0)
             return new SyncValidationResult(false, "rsync is not installed locally.");
 
-        var remoteCommand = $"command -v rsync >/dev/null && mkdir -p {ShellQuote(sync.DestinationPath)} && test -w {ShellQuote(sync.DestinationPath)}";
-        var ssh = await _processes.RunAsync(new ProcessRequest("ssh", BuildSshArguments(sync, remoteCommand)), cancellationToken);
-        return ssh.ExitCode == 0
-            ? new SyncValidationResult(true, "SSH connectivity, remote rsync, and destination write access are available.")
-            : new SyncValidationResult(false, $"Remote validation failed: {SafeError(ssh)}");
+        // Validation sends a probe file with rsync instead of running a shell command, so
+        // destinations whose key only allows rsync (such as rrsync) can be validated too.
+        var probeDirectory = Directory.CreateTempSubdirectory("lutra-sync-check-");
+        try
+        {
+            var probe = Path.Combine(probeDirectory.FullName, ProbeFileName);
+            await File.WriteAllTextAsync(probe, DateTime.UtcNow.ToString("O"), cancellationToken);
+
+            var args = new List<string>
+            {
+                "--mkpath",
+                "-e",
+                BuildRsyncSshCommand(sync),
+                probe,
+                $"{sync.User}@{sync.Host}:{sync.DestinationPath.TrimEnd('/')}/"
+            };
+            var rsync = await _processes.RunAsync(new ProcessRequest("rsync", args), cancellationToken);
+            return rsync.ExitCode == 0
+                ? new SyncValidationResult(true, "SSH connectivity, remote rsync, and destination write access are available.")
+                : new SyncValidationResult(false, $"Remote validation failed: {SafeError(rsync)}");
+        }
+        finally
+        {
+            probeDirectory.Delete(recursive: true);
+        }
     }
 
     public async Task<SyncResult> SyncAsync(
@@ -201,9 +223,6 @@ public sealed class RsyncService
 
     private RsyncConfig GetConfig()
         => _config.Sync ?? throw new ConfigurationException("An rsync 'sync' section is not configured.");
-
-    private static IReadOnlyList<string> BuildSshArguments(RsyncConfig config, string remoteCommand)
-        => ["-i", config.SshKeyPath, "-p", config.Port.ToString(), "-o", "BatchMode=yes", $"{config.User}@{config.Host}", remoteCommand];
 
     private static string BuildRsyncSshCommand(RsyncConfig config)
         => $"ssh -i {ShellQuote(config.SshKeyPath)} -p {config.Port} -o BatchMode=yes";
