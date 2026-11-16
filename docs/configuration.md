@@ -41,7 +41,7 @@ One state directory belongs to one normalized configuration path. Sharing it bet
 
 ## Sync and Notifications
 
-Configure offsite sync with `sync.type: rsync`, `host`, `user`, `destination_path`, and `ssh_key_path`. Optional fields are `port`, `extra_args`, `post_backup`, and `delete`. Remote deletion is disabled unless configured or explicitly requested with `--delete`. Use `--dry-run` before the first transfer. Successful transfers write a `.last-sync.json` marker next to the synced files.
+Configure offsite sync with `sync.type: rsync`, `host`, `user`, `destination_path`, and `ssh_key_path`. Optional fields are `port`, `extra_args`, `post_backup`, and `delete`. Remote deletion is disabled unless configured or explicitly requested with `--delete`. Use `--dry-run` before the first transfer. Successful transfers write a `.last-sync.json` marker next to the synced files. `lutra sync --validate` needs rsync 3.2.3 or later on both hosts, and creates `destination_path` if it is missing. To limit the destination key to rsync, see [Restricting the Destination Key](operations.md#restricting-the-destination-key).
 
 Discord notifications are optional, synchronous, and best-effort. They never change
 an operation's exit status. Backup messages include one success or failure embed per

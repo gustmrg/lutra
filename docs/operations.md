@@ -97,3 +97,18 @@ rsync -avz --exclude='/.lutra-state/' vps:/var/backups/lutra/ ~/backups/lutra/
 For a Raspberry Pi, use a dedicated restricted user and grant its SSH key write access only to the destination directory. A pull-based timer is safer because a compromised VPS cannot use the Pi's credentials to delete the repository. Built-in sync excludes local application state, lock files, and temporary files. Apply equivalent exclusions to manual pull tools; do not copy or snapshot the live `lutra.db`, `lutra.db-wal`, or `lutra.db-shm` family.
 
 Dumps are stored unencrypted on both sides. Restrict the destination directory to the account that receives the sync.
+
+### Restricting the Destination Key
+
+Lutra only runs `rsync` on the destination, for both `lutra sync` and `lutra sync --validate`, so the receiving key can be limited to rsync with [`rrsync`](https://download.samba.org/pub/rsync/rrsync.1), which ships with rsync. In the receiving account's `~/.ssh/authorized_keys`:
+
+```text
+command="rrsync -wo -absolute /srv/backups/lutra",restrict,from="203.0.113.10" ssh-ed25519 AAAA... lutra
+```
+
+- `-wo` allows writes only: a leaked key cannot download the backups.
+- `-absolute` (rsync 3.5.0 or later) lets `destination_path: /srv/backups/lutra` keep working unchanged. Older `rrsync` versions treat every path as relative to the restricted directory: drop `-absolute` and set `destination_path: /`.
+- Add `-no-del` (rsync 3.2.4 or later) when `delete` is off, so the key cannot remove remote files either.
+- `restrict` disables shells, terminals, and forwarding; `from` limits the key to the host that runs Lutra.
+
+Run `lutra sync --validate` after changing the key. Validation writes a small `.lutra-sync-check` file to the destination.
